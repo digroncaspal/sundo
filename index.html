@@ -388,6 +388,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div class="card" style="margin-bottom:14px">
         <div class="card-label">명단 관리</div>
         <button class="setting-btn" onclick="loadStaffCSV()">선도부원 명단 새로고침</button>
+        <button class="setting-btn" onclick="loadFromSheets()">📥 시트에서 기록 불러오기</button>
         <button class="setting-btn danger" onclick="clearLocal()">로컬 데이터 초기화</button>
         <div style="font-family:var(--mono);font-size:10px;margin-top:10px" id="cfg-status"></div>
       </div>
@@ -615,6 +616,67 @@ function loadStaffCSV() {
   setTimeout(function() { statusEl.textContent = ''; }, 2500);
   toast('선도부원 명단 적용됨', 'ok');
   renderAttend();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 시트에서 기록 불러오기 (관리자 전용)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadFromSheets() {
+  if (!isAdmin) { toast('관리자만 사용할 수 있습니다.', 'err'); return; }
+  const statusEl = document.getElementById('cfg-status');
+  statusEl.textContent = '시트에서 불러오는 중...';
+  statusEl.style.color = 'var(--yellow)';
+
+  try {
+    // 단속기록 불러오기
+    const vRes  = await fetch(VIOLATION_URL);
+    const vData = await vRes.json();
+    if (vData.records && vData.records.length) {
+      violations = vData.records.map(function(r, i) {
+        return {
+          id: 'v_sheet_' + i,
+          studentId:   r.studentId,
+          name:        r.name,
+          date:        r.date,
+          time:        r.time,
+          periodLabel: r.periodLabel || '수업 외',
+          period:      -1,
+          timestamp:   0,
+          recorder:    r.recorder || ''
+        };
+      });
+      saveV();
+    }
+
+    // 출첵기록 불러오기
+    const aRes  = await fetch(ATTEND_URL);
+    const aData = await aRes.json();
+    if (aData.records && aData.records.length) {
+      attendances = aData.records.map(function(r, i) {
+        return {
+          id:        'a_sheet_' + i,
+          studentId: r.studentId,
+          name:      r.name,
+          date:      r.date,
+          time:      r.time,
+          timestamp: 0,
+          recorder:  r.recorder || ''
+        };
+      });
+      saveA();
+    }
+
+    const msg = '단속 ' + violations.length + '건 · 출첵 ' + attendances.length + '건 불러옴';
+    statusEl.textContent = '✓ ' + msg;
+    statusEl.style.color = 'var(--green)';
+    toast(msg, 'ok');
+    renderList(); renderStats(); renderAttend();
+  } catch(err) {
+    console.error(err);
+    statusEl.textContent = '불러오기 실패 — Apps Script 재배포 확인';
+    statusEl.style.color = 'var(--accent)';
+    toast('불러오기 실패', 'err');
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
