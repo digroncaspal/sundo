@@ -628,13 +628,27 @@ async function loadFromSheets() {
   statusEl.style.color = 'var(--yellow)';
 
   try {
-    // 단속기록 불러오기
-    const vRes  = await fetch(VIOLATION_URL);
+    // 단속기록 + 학생명단 동시 요청
+    const [vRes, aRes, sRes] = await Promise.all([
+      fetch(VIOLATION_URL),
+      fetch(ATTEND_URL),
+      fetch(VIOLATION_URL + '?action=students')
+    ]);
     const vData = await vRes.json();
-    if (vData.records && vData.records.length) {
+    const aData = await aRes.json();
+    const sData = await sRes.json();
+
+    // 학생 명단
+    if (sData.students && Object.keys(sData.students).length) {
+      STUDENTS = sData.students;
+      localStorage.setItem('sbok_students', JSON.stringify(STUDENTS));
+    }
+
+    // 단속기록
+    if (vData.records) {
       violations = vData.records.map(function(r, i) {
         return {
-          id: 'v_sheet_' + i,
+          id:          'v_sheet_' + i,
           studentId:   r.studentId,
           name:        r.name,
           date:        r.date,
@@ -648,10 +662,8 @@ async function loadFromSheets() {
       saveV();
     }
 
-    // 출첵기록 불러오기
-    const aRes  = await fetch(ATTEND_URL);
-    const aData = await aRes.json();
-    if (aData.records && aData.records.length) {
+    // 출첵기록
+    if (aData.records) {
       attendances = aData.records.map(function(r, i) {
         return {
           id:        'a_sheet_' + i,
@@ -666,7 +678,7 @@ async function loadFromSheets() {
       saveA();
     }
 
-    const msg = '단속 ' + violations.length + '건 · 출첵 ' + attendances.length + '건 불러옴';
+    const msg = '단속 ' + violations.length + '건 · 출첵 ' + attendances.length + '건 · 학생 ' + Object.keys(STUDENTS).length + '명 불러옴';
     statusEl.textContent = '✓ ' + msg;
     statusEl.style.color = 'var(--green)';
     toast(msg, 'ok');
@@ -810,7 +822,7 @@ function onAuthInput(val) {
   if (v.length !== 4) { previewEl.textContent = ''; return; }
 
   const name = STAFF[v];
-  previewEl.textContent = name || '선도부원 명단에 없는 학번';
+  previewEl.textContent = name ? '✓ 확인됨' : '선도부원 명단에 없는 학번';
   previewEl.style.color = name ? 'var(--green)' : 'var(--accent)';
 }
 
@@ -833,7 +845,7 @@ function tryAuth() {
   isAdmin = ADMIN_IDS.indexOf(String(id).trim()) !== -1;
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  document.getElementById('recorder-name').textContent = name;
+  document.getElementById('recorder-name').textContent = id;  // 이름 대신 학번 표시
   initApp();
 }
 
@@ -919,7 +931,7 @@ function onStudentInput(val) {
   if (v.length === 4) {
     const name = lookupName(v);
     if (name) {
-      el.textContent = name;
+      el.textContent = '✓ 등록된 학번';
       el.style.color = 'var(--green)';
       nameCard.style.display = 'none';
       nameInput.value = '';
@@ -978,10 +990,10 @@ function saveViolation() {
   document.getElementById('student-name').style.color = 'var(--text2)';
   document.getElementById('name-input').value = '';
   document.getElementById('name-override-card').style.display = 'none';
-  msgEl.textContent = '✓ ' + name + '  ' + p.label + '  ' + timeStr;
+  msgEl.textContent = '✓ ' + sid + '  ' + p.label + '  ' + timeStr;
   msgEl.className = 'status-msg ok';
   setTimeout(function() { msgEl.textContent = ''; }, 3000);
-  toast(name + ' — ' + p.label, 'ok');
+  toast(sid + ' — ' + p.label, 'ok');
   document.getElementById('student-input').focus();
   renderList(); renderStats();
 }
@@ -1143,13 +1155,11 @@ function renderAttend() {
     } else {
       const todayChecked = attendances.filter(function(a) { return a.date === today; }).map(function(a) { return a.studentId; });
       dutyEl.innerHTML = dutyIds.map(function(id) {
-        const name = STAFF[id] || id;
         const done = todayChecked.indexOf(id) !== -1;
         return '<div class="duty-card' + (done ? ' done' : '') + '" onclick="' + (done ? '' : 'document.getElementById(\'attend-input\').value=\'' + id + '\';onAttendInput(\'' + id + '\');') + '">' +
           '<span class="duty-check" style="color:' + (done ? 'var(--green)' : 'var(--text2)') + '">' + (done ? '✓' : '○') + '</span>' +
           '<div>' +
-            '<div style="font-size:13px;font-weight:700;color:' + (done ? 'var(--green)' : 'var(--text)') + '">' + name + '</div>' +
-            '<div style="font-family:var(--mono);font-size:10px;color:var(--text2)">' + id + '</div>' +
+            '<div style="font-size:13px;font-weight:700;color:' + (done ? 'var(--green)' : 'var(--text)') + '">' + id + '</div>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -1168,8 +1178,7 @@ function renderAttend() {
     return '<div class="v-item" style="grid-template-columns:auto 1fr auto">' +
       '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">✓</div>' +
       '<div>' +
-        '<div class="v-name">' + a.name +
-          ' <span style="font-family:var(--mono);font-size:10px;color:var(--text2);font-weight:400">' + a.studentId + '</span>' +
+        '<div class="v-name">' + a.studentId +
           (isDuty ? ' <span class="penalty-tag" style="background:rgba(45,255,142,.1);color:var(--green);border:1px solid rgba(45,255,142,.3)">당번</span>' : '') +
         '</div>' +
         '<div class="v-meta">' + a.time + '</div>' +
@@ -1201,7 +1210,7 @@ function renderList() {
     return '<div class="v-item">' +
       '<div class="v-period">' + pDisp + '</div>' +
       '<div>' +
-        '<div class="v-name">' + v.name + ' <span style="font-family:var(--mono);font-size:10px;color:var(--text2);font-weight:400">' + v.studentId + '</span></div>' +
+        '<div class="v-name">' + v.studentId + '</div>' +
         '<div class="v-meta">' + v.date + ' ' + (v.time||'') + ' · ' + v.periodLabel + '</div>' +
       '</div>' +
       '<div class="v-recorder">' + (v.recorder||'') + '</div>' +
@@ -1289,7 +1298,7 @@ function renderStats() {
   } else {
     rkEl.innerHTML = rankData.map(function(item, i) {
       const id  = item[0], cnt = item[1];
-      const name = lookupName(id) || id;
+      const name = id; // 이름 비표시
       const pct  = Math.round(cnt / maxC * 100);
       const tag  = cnt >= 3 ? '<span class="penalty-tag p2">추가조치</span>' : cnt >= 2 ? '<span class="penalty-tag p1">청소</span>' : '';
       return '<div class="rank-item" onclick="showDetail(\'' + id + '\')">' +
@@ -1326,8 +1335,8 @@ function showDetail(sid) {
   const name  = lookupName(sid) || sid;
   const today = getToday();
   const all   = violations.filter(function(v) { return v.studentId === sid; });
-  document.getElementById('dp-name').textContent  = name;
-  document.getElementById('dp-id').textContent    = '학번 ' + sid;
+  document.getElementById('dp-name').textContent  = sid;
+  document.getElementById('dp-id').textContent    = '';
   document.getElementById('dp-total').textContent = all.length;
   document.getElementById('dp-today').textContent = all.filter(function(v) { return v.date === today; }).length;
 
