@@ -1309,7 +1309,9 @@ function renderList() {
   if (!data.length) { el.innerHTML = '<div class="empty-state">기록이 없습니다</div>'; return; }
   el.innerHTML = data.map(function(v) {
     const canEdit = isAdmin;
-    const pDisp   = v.period < 0 ? '?' : v.period === 0 ? '선도' : v.periodLabel.replace('교시','').replace('시간','');
+    const pDisp   = v.period < 0
+      ? (v.periodLabel ? v.periodLabel.replace('교시','').replace('시간','').replace('아침선도','선도').trim() || '?' : '?')
+      : v.period === 0 ? '선도' : v.periodLabel.replace('교시','').replace('시간','');
     return '<div class="v-item">' +
       '<div class="v-period">' + pDisp + '</div>' +
       '<div>' +
