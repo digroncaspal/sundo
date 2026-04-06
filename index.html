@@ -472,6 +472,7 @@ const DUTY_DATA = {
 };
 const VIOLATION_URL    = 'https://script.google.com/macros/s/AKfycbw02NuplhIYV3SVxI21KU25P2dqwdpSz2g2XcdXJhQ4smM9yc361oNDO83MGpYoYcGr3Q/exec';
 const ATTEND_URL       = 'https://script.google.com/macros/s/AKfycbzsG9XFWEnP0QXzwYnXmspFjYMVMbcD3_531noHWVYBrDLq1E5x1rpvlEkI3Hw_MrmTtw/exec';
+const FB_URL           = 'https://sjdshs-sundo-default-rtdb.firebaseio.com';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 상태
@@ -595,18 +596,32 @@ function saveA() { localStorage.setItem('sbok_a', JSON.stringify(attendances)); 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Apps Script POST
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-async function apiGet(url, params) {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Firebase REST API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function fbSet(path, data) {
   try {
-    const query = Object.keys(params).map(function(k) {
-      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
-    }).join('&');
-    const res  = await fetch(url + '?' + query);
-    const data = await res.json();
-    if (data.status && data.status !== 'ok') { console.warn('apiGet 응답 오류:', data); }
-    return data;
-  } catch(e) {
-    console.warn('apiGet 실패:', e);
-  }
+    await fetch(FB_URL + path + '.json', {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.warn('fbSet 실패:', e); }
+}
+
+async function fbPush(path, data) {
+  try {
+    await fetch(FB_URL + path + '.json', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.warn('fbPush 실패:', e); }
+}
+
+async function fbGet(path) {
+  try {
+    const res = await fetch(FB_URL + path + '.json');
+    return await res.json();
+  } catch(e) { console.warn('fbGet 실패:', e); return null; }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -647,31 +662,28 @@ function loadStaffCSV() {
 async function loadFromSheets() {
   if (!isAdmin) { toast('관리자만 사용할 수 있습니다.', 'err'); return; }
   const statusEl = document.getElementById('cfg-status');
-  statusEl.textContent = '시트에서 불러오는 중...';
+  statusEl.textContent = '불러오는 중...';
   statusEl.style.color = 'var(--yellow)';
 
   try {
-    // 단속기록 + 학생명단 동시 요청
-    const [vRes, aRes, sRes] = await Promise.all([
-      fetch(VIOLATION_URL),
-      fetch(ATTEND_URL),
-      fetch(VIOLATION_URL + '?action=students')
+    // Firebase + 학생명단 동시 요청
+    const [vData, aData, sData] = await Promise.all([
+      fbGet('/violations'),
+      fbGet('/attendances'),
+      fetch(VIOLATION_URL + '?action=students').then(function(r) { return r.json(); })
     ]);
-    const vData = await vRes.json();
-    const aData = await aRes.json();
-    const sData = await sRes.json();
 
-    // 학생 명단
-    if (sData.students && Object.keys(sData.students).length) {
+    // 학생 명단 (Apps Script)
+    if (sData && sData.students && Object.keys(sData.students).length) {
       STUDENTS = sData.students;
       localStorage.setItem('sbok_students', JSON.stringify(STUDENTS));
     }
 
-    // 단속기록
-    if (vData.records) {
-      violations = vData.records.map(function(r, i) {
+    // 단속기록 (Firebase)
+    if (vData) {
+      violations = Object.values(vData).map(function(r, i) {
         return {
-          id:          'v_sheet_' + i,
+          id:          'v_fb_' + i,
           studentId:   r.studentId,
           name:        r.name,
           date:        r.date,
@@ -685,11 +697,11 @@ async function loadFromSheets() {
       saveV();
     }
 
-    // 출첵기록
-    if (aData.records) {
-      attendances = aData.records.map(function(r, i) {
+    // 출첵기록 (Firebase)
+    if (aData) {
+      attendances = Object.values(aData).map(function(r, i) {
         return {
-          id:        'a_sheet_' + i,
+          id:        'a_fb_' + i,
           studentId: r.studentId,
           name:      r.name,
           date:      r.date,
@@ -708,7 +720,7 @@ async function loadFromSheets() {
     renderList(); renderStats(); renderAttend();
   } catch(err) {
     console.error(err);
-    statusEl.textContent = '불러오기 실패 — Apps Script 재배포 확인';
+    statusEl.textContent = '불러오기 실패';
     statusEl.style.color = 'var(--accent)';
     toast('불러오기 실패', 'err');
   }
@@ -1007,14 +1019,13 @@ function saveViolation() {
 
   violations.unshift(rec);
   saveV();
-  apiGet(VIOLATION_URL, {
-    action: 'save',
-    studentId: rec.studentId,
-    name: rec.name,
-    date: rec.date,
-    time: rec.time,
+  fbPush('/violations', {
+    studentId:   rec.studentId,
+    name:        rec.name,
+    date:        rec.date,
+    time:        rec.time,
     periodLabel: rec.periodLabel,
-    recorder: rec.recorder || ''
+    recorder:    rec.recorder || ''
   });
   document.getElementById('student-input').value = '';
   document.getElementById('student-name').textContent = '—';
@@ -1146,13 +1157,12 @@ function doSaveAttend(id, lat, lng, accuracy) {
   saveA();
   // 기기에 오늘 출첵 완료 기록
   localStorage.setItem(deviceKey, name + ' (' + rec.time + ')');
-  apiGet(ATTEND_URL, {
-    action: 'save',
+  fbPush('/attendances', {
     studentId: rec.studentId,
-    name: rec.name,
-    date: rec.date,
-    time: rec.time,
-    recorder: rec.recorder || ''
+    name:      rec.name,
+    date:      rec.date,
+    time:      rec.time,
+    recorder:  rec.recorder || ''
   });
 
   document.getElementById('attend-input').value = '';
