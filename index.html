@@ -595,18 +595,17 @@ function saveA() { localStorage.setItem('sbok_a', JSON.stringify(attendances)); 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Apps Script POST
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-async function apiPost(url, body) {
+async function apiGet(url, params) {
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    const query = Object.keys(params).map(function(k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    const res  = await fetch(url + '?' + query);
     const data = await res.json();
-    if (data.status !== 'ok') { console.warn('apiPost 응답 오류:', data); }
+    if (data.status && data.status !== 'ok') { console.warn('apiGet 응답 오류:', data); }
     return data;
   } catch(e) {
-    console.warn('apiPost 실패:', e);
+    console.warn('apiGet 실패:', e);
   }
 }
 
@@ -1008,7 +1007,7 @@ function saveViolation() {
 
   violations.unshift(rec);
   saveV();
-  apiPost(VIOLATION_URL, {
+  apiGet(VIOLATION_URL, {
     action: 'save',
     studentId: rec.studentId,
     name: rec.name,
@@ -1147,8 +1146,8 @@ function doSaveAttend(id, lat, lng, accuracy) {
   saveA();
   // 기기에 오늘 출첵 완료 기록
   localStorage.setItem(deviceKey, name + ' (' + rec.time + ')');
-  apiPost(ATTEND_URL, {
-    action: 'attend',
+  apiGet(ATTEND_URL, {
+    action: 'save',
     studentId: rec.studentId,
     name: rec.name,
     date: rec.date,
