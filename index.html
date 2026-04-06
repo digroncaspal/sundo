@@ -906,8 +906,6 @@ function initApp() {
   renderPeriodEditor();
   document.getElementById('student-input').focus();
   renderList(); renderStats(); renderAttend();
-  // 앱 시작 시 학생 명단 자동 로드
-  loadStudents();
 }
 
 function updateClock() {
@@ -1392,6 +1390,7 @@ function closeDetail() { document.getElementById('detail-panel').classList.remov
 window.addEventListener('load', function() {
   loadLocal();
   checkAttendLock();
+  loadStudents(); // 페이지 로드 시 즉시 학생 명단 불러오기
   document.getElementById('auth-input').focus();
 });
 </script>
