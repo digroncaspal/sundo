@@ -798,8 +798,13 @@ function downloadCSV(filename, content) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(function() {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }, 100);
 }
 function exportCSV(type) {
   const from = document.getElementById('csv-from').value;
@@ -917,6 +922,53 @@ function initApp() {
   renderPeriodEditor();
   document.getElementById('student-input').focus();
   renderList(); renderStats(); renderAttend();
+  // 로그인 시 Firebase에서 자동 불러오기
+  autoLoadFromFirebase();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Firebase 자동 불러오기 (로그인 시)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function autoLoadFromFirebase() {
+  try {
+    const [vData, aData] = await Promise.all([
+      fbGet('/violations'),
+      fbGet('/attendances')
+    ]);
+    if (vData) {
+      violations = Object.values(vData).map(function(r, i) {
+        return {
+          id:          'v_fb_' + i,
+          studentId:   r.studentId,
+          name:        r.name,
+          date:        r.date,
+          time:        r.time,
+          periodLabel: r.periodLabel || '수업 외',
+          period:      -1,
+          timestamp:   0,
+          recorder:    r.recorder || ''
+        };
+      });
+      saveV();
+    }
+    if (aData) {
+      attendances = Object.values(aData).map(function(r, i) {
+        return {
+          id:        'a_fb_' + i,
+          studentId: r.studentId,
+          name:      r.name,
+          date:      r.date,
+          time:      r.time,
+          timestamp: 0,
+          recorder:  r.recorder || ''
+        };
+      });
+      saveA();
+    }
+    renderList(); renderStats(); renderAttend();
+  } catch(e) {
+    console.warn('Firebase 자동 불러오기 실패:', e);
+  }
 }
 
 function updateClock() {
