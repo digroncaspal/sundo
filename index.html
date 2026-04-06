@@ -1008,6 +1008,15 @@ function saveViolation() {
 
   violations.unshift(rec);
   saveV();
+  apiPost(VIOLATION_URL, {
+    action: 'save',
+    studentId: rec.studentId,
+    name: rec.name,
+    date: rec.date,
+    time: rec.time,
+    periodLabel: rec.periodLabel,
+    recorder: rec.recorder || ''
+  });
   document.getElementById('student-input').value = '';
   document.getElementById('student-name').textContent = '—';
   document.getElementById('student-name').style.color = 'var(--text2)';
