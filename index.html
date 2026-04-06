@@ -595,13 +595,19 @@ function saveA() { localStorage.setItem('sbok_a', JSON.stringify(attendances)); 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Apps Script POST
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function apiPost(url, body) {
-  fetch(url, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).catch(function(e) { console.warn(e); });
+async function apiPost(url, body) {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.status !== 'ok') { console.warn('apiPost 응답 오류:', data); }
+    return data;
+  } catch(e) {
+    console.warn('apiPost 실패:', e);
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
