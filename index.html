@@ -611,6 +611,24 @@ async function apiPost(url, body) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 학생 전체 명단 자동 로드 (앱 시작 시)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadStudents() {
+  try {
+    const res  = await fetch(VIOLATION_URL + '?action=students');
+    const data = await res.json();
+    if (data.students && Object.keys(data.students).length) {
+      STUDENTS = data.students;
+      localStorage.setItem('sbok_students', JSON.stringify(STUDENTS));
+      console.log('학생 명단 로드 완료:', Object.keys(STUDENTS).length + '명');
+    }
+  } catch(e) {
+    console.warn('학생 명단 로드 실패:', e);
+    // 실패 시 캐시된 명단 유지 (loadLocal에서 이미 로드됨)
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 명단 새로고침 (하드코딩 재적용)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function loadStaffCSV() {
@@ -888,7 +906,8 @@ function initApp() {
   renderPeriodEditor();
   document.getElementById('student-input').focus();
   renderList(); renderStats(); renderAttend();
-
+  // 앱 시작 시 학생 명단 자동 로드
+  loadStudents();
 }
 
 function updateClock() {
