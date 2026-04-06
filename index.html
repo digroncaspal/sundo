@@ -624,6 +624,12 @@ async function fbGet(path) {
   } catch(e) { console.warn('fbGet 실패:', e); return null; }
 }
 
+async function fbDelete(path) {
+  try {
+    await fetch(FB_URL + path + '.json', { method: 'DELETE' });
+  } catch(e) { console.warn('fbDelete 실패:', e); }
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 학생 전체 명단 자동 로드 (앱 시작 시)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -681,9 +687,11 @@ async function loadFromSheets() {
 
     // 단속기록 (Firebase)
     if (vData) {
-      violations = Object.values(vData).map(function(r, i) {
+      violations = Object.entries(vData).map(function(entry, i) {
+        const key = entry[0], r = entry[1];
         return {
           id:          'v_fb_' + i,
+          fbKey:       key,
           studentId:   r.studentId,
           name:        r.name,
           date:        r.date,
@@ -936,9 +944,11 @@ async function autoLoadFromFirebase() {
       fbGet('/attendances')
     ]);
     if (vData) {
-      violations = Object.values(vData).map(function(r, i) {
+      violations = Object.entries(vData).map(function(entry, i) {
+        const key = entry[0], r = entry[1];
         return {
           id:          'v_fb_' + i,
+          fbKey:       key,
           studentId:   r.studentId,
           name:        r.name,
           date:        r.date,
@@ -1298,7 +1308,7 @@ function renderList() {
   const el = document.getElementById('violation-list');
   if (!data.length) { el.innerHTML = '<div class="empty-state">기록이 없습니다</div>'; return; }
   el.innerHTML = data.map(function(v) {
-    const canEdit = isEditable(v.timestamp || 0);
+    const canEdit = isAdmin;
     const pDisp   = v.period < 0 ? '?' : v.period === 0 ? '선도' : v.periodLabel.replace('교시','').replace('시간','');
     return '<div class="v-item">' +
       '<div class="v-period">' + pDisp + '</div>' +
@@ -1328,9 +1338,14 @@ function deleteRecord(id) {
 }
 function confirmDel() {
   if (!delTargetId) return;
+  const rec = violations.find(function(v) { return v.id === delTargetId; });
   violations = violations.filter(function(v) { return v.id !== delTargetId; });
   saveV();
   closeModal('del-modal');
+  // Firebase에서도 삭제 (fbKey가 있는 경우)
+  if (rec && rec.fbKey) {
+    fbDelete('/violations/' + rec.fbKey);
+  }
   delTargetId = null;
   renderList(); renderStats();
   toast('기록 삭제됨', 'info');
@@ -1393,7 +1408,7 @@ function renderStats() {
       const id  = item[0], cnt = item[1];
       const name = id; // 이름 비표시
       const pct  = Math.round(cnt / maxC * 100);
-      const tag  = cnt >= 3 ? '<span class="penalty-tag p2">추가조치</span>' : cnt >= 2 ? '<span class="penalty-tag p1">청소</span>' : '';
+      const tag  = '';
       return '<div class="rank-item" onclick="showDetail(\'' + id + '\')">' +
         '<div class="rank-num ' + (i < 3 ? 'top' : '') + '">' + (i+1) + '</div>' +
         '<div class="rank-name">' + name + '</div>' +
