@@ -255,8 +255,15 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 
     <!-- 단속 입력 -->
     <div class="section active" id="section-input">
+      <!-- 입력 방식 전환 -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="filter-btn active" id="mode-btn-id" onclick="setInputMode('id')">학번으로 입력</button>
+        <button class="filter-btn" id="mode-btn-name" onclick="setInputMode('name')">학년·반·이름으로 입력</button>
+      </div>
+
       <div class="input-grid">
-        <div class="card">
+        <!-- 학번 입력 모드 -->
+        <div class="card" id="mode-id-card">
           <div class="card-label">학번 입력</div>
           <input class="input-field" id="student-input" type="tel" inputmode="numeric"
             maxlength="4" placeholder="0000" autocomplete="off"
@@ -266,6 +273,39 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
             <div class="name-value" id="student-name" style="color:var(--text2)">—</div>
           </div>
         </div>
+
+        <!-- 학년·반·이름 입력 모드 -->
+        <div class="card" id="mode-name-card" style="display:none">
+          <div class="card-label">학년 · 반 · 이름</div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <select id="search-grade" style="flex:1;height:44px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 10px;font-family:var(--mono);font-size:14px;color:var(--text);outline:none" onchange="onNameSearch()">
+              <option value="">학년</option>
+              <option value="1">1학년</option>
+              <option value="2">2학년</option>
+              <option value="3">3학년</option>
+            </select>
+            <select id="search-class" style="flex:1;height:44px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 10px;font-family:var(--mono);font-size:14px;color:var(--text);outline:none" onchange="onNameSearch()">
+              <option value="">반</option>
+              <option value="1">1반</option>
+              <option value="2">2반</option>
+              <option value="3">3반</option>
+              <option value="4">4반</option>
+              <option value="5">5반</option>
+              <option value="6">6반</option>
+              <option value="7">7반</option>
+              <option value="8">8반</option>
+            </select>
+            <input id="search-name" type="text" placeholder="이름"
+              style="flex:1;height:44px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 12px;font-family:var(--sans);font-size:16px;color:var(--text);outline:none"
+              oninput="onNameSearch()" onkeydown="if(event.key==='Enter')saveViolation()">
+          </div>
+          <!-- 검색 결과 -->
+          <div id="search-results" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto"></div>
+          <div class="name-display" style="margin-top:8px">
+            <div class="name-value" id="search-selected" style="color:var(--text2)">—</div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-label">현재 교시</div>
           <div style="display:flex;align-items:center;gap:12px">
@@ -278,7 +318,8 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           <div class="clock" id="clock">--:--:--</div>
         </div>
       </div>
-      <!-- 이름 직접 입력 (학번으로 못 찾을 때) -->
+
+      <!-- 미등록 학번 이름 입력 -->
       <div class="card" id="name-override-card" style="display:none;margin-bottom:14px">
         <div class="card-label" style="color:var(--yellow)">이름 직접 입력</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin-bottom:10px">미등록 학번 — 이름 입력 시 함께 기록 (선택사항)</div>
@@ -479,6 +520,8 @@ const FB_URL           = 'https://sjdshs-sundo-default-rtdb.firebaseio.com';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 let STAFF       = {};   // { 학번: 이름 }
 let STUDENTS    = {};   // { 학번: 이름 }
+let inputMode   = 'id'; // 'id' or 'name'
+let searchSelected = null; // { studentId, name } 검색으로 선택된 학생
 let DUTY        = {};   // { 1(월):[학번..], 2(화):[..], ..., 5(금):[..] }
 let violations  = [];
 let attendances = [];
@@ -928,7 +971,6 @@ function initApp() {
   document.getElementById('csv-from').value = todayStr;
   document.getElementById('csv-to').value   = todayStr;
   renderPeriodEditor();
-  document.getElementById('student-input').focus();
   renderList(); renderStats(); renderAttend();
   // 로그인 시 Firebase에서 자동 불러오기
   autoLoadFromFirebase();
@@ -1018,6 +1060,98 @@ function lookupName(id) {
   return STUDENTS[id] || STAFF[id] || null;
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 입력 모드 전환
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function setInputMode(mode) {
+  inputMode = mode;
+  searchSelected = null;
+  document.getElementById('mode-btn-id').classList.toggle('active', mode === 'id');
+  document.getElementById('mode-btn-name').classList.toggle('active', mode === 'name');
+  document.getElementById('mode-id-card').style.display   = mode === 'id'   ? '' : 'none';
+  document.getElementById('mode-name-card').style.display = mode === 'name' ? '' : 'none';
+  document.getElementById('name-override-card').style.display = 'none';
+  document.getElementById('status-msg').textContent = '';
+  document.getElementById('search-selected').textContent = '—';
+  document.getElementById('search-selected').style.color = 'var(--text2)';
+  document.getElementById('search-results').innerHTML = '';
+  if (mode === 'id') {
+    document.getElementById('student-input').value = '';
+    document.getElementById('student-name').textContent = '—';
+    document.getElementById('student-name').style.color = 'var(--text2)';
+    document.getElementById('student-input').focus();
+  } else {
+    document.getElementById('search-grade').value = '';
+    document.getElementById('search-class').value = '';
+    document.getElementById('search-name').value = '';
+    document.getElementById('search-name').focus();
+  }
+}
+
+// 학번에서 학년·반 추출 (예: 2306 → 학년2, 반3)
+function parseStudentId(id) {
+  if (id.length !== 4) return null;
+  const grade = parseInt(id[0]);
+  const cls   = parseInt(id[1]);
+  const num   = parseInt(id.slice(2));
+  if (isNaN(grade) || isNaN(cls) || isNaN(num)) return null;
+  return { grade, cls, num };
+}
+
+function onNameSearch() {
+  const grade    = document.getElementById('search-grade').value;
+  const cls      = document.getElementById('search-class').value;
+  const nameKw   = document.getElementById('search-name').value.trim();
+  const resultsEl = document.getElementById('search-results');
+  searchSelected = null;
+  document.getElementById('search-selected').textContent = '—';
+  document.getElementById('search-selected').style.color = 'var(--text2)';
+
+  if (!grade && !cls && !nameKw) { resultsEl.innerHTML = ''; return; }
+
+  // STUDENTS에서 조건 맞는 학생 검색
+  const matches = Object.entries(STUDENTS).filter(function(entry) {
+    const sid = entry[0], sname = entry[1];
+    const parsed = parseStudentId(sid);
+    if (!parsed) return false;
+    if (grade && String(parsed.grade) !== grade) return false;
+    if (cls   && String(parsed.cls)   !== cls)   return false;
+    if (nameKw && sname.indexOf(nameKw) === -1)   return false;
+    return true;
+  });
+
+  if (!matches.length) {
+    resultsEl.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text2);padding:8px">검색 결과 없음</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = '';
+  matches.slice(0, 10).forEach(function(entry) {
+    const sid = entry[0], sname = entry[1];
+    const parsed = parseStudentId(sid);
+    const label = parsed ? parsed.grade + '학년 ' + parsed.cls + '반 ' + sname : sname;
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px;font-weight:700;transition:all .15s;margin-bottom:4px';
+    div.innerHTML = label + ' <span style="font-family:var(--mono);font-size:10px;color:var(--text2);font-weight:400">' + sid + '</span>';
+    (function(s, n) {
+      div.addEventListener('mouseover', function() { this.style.borderColor = 'var(--accent)'; });
+      div.addEventListener('mouseout',  function() { this.style.borderColor = 'var(--border)'; });
+      div.addEventListener('click',     function() { selectSearchResult(s, n); });
+    })(sid, sname);
+    resultsEl.appendChild(div);
+  });
+}
+
+function selectSearchResult(sid, name) {
+  searchSelected = { studentId: sid, name: name };
+  const parsed = parseStudentId(sid);
+  const label = parsed ? parsed.grade + '학년 ' + parsed.cls + '반 ' + name : name;
+  const el = document.getElementById('search-selected');
+  el.textContent = '✓ ' + label;
+  el.style.color = 'var(--green)';
+  document.getElementById('search-results').innerHTML = '';
+}
+
 function onStudentInput(val) {
   const v  = val.replace(/\D/g, '');
   document.getElementById('student-input').value = v;
@@ -1052,18 +1186,31 @@ function onNameInput(val) {
 // 단속 저장
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function saveViolation() {
-  const sid   = document.getElementById('student-input').value;
   const msgEl = document.getElementById('status-msg');
-  if (sid.length !== 4) {
-    msgEl.textContent = '학번 4자리를 입력하세요.';
-    msgEl.className = 'status-msg err';
-    return;
-  }
-  let name = lookupName(sid);
-  if (!name) {
-    // 미등록 학번 — 직접 입력한 이름 있으면 사용, 없으면 학번으로 저장
-    const nameVal = document.getElementById('name-input').value.trim();
-    name = nameVal || sid;
+  let sid, name;
+
+  if (inputMode === 'name') {
+    // 학년·반·이름 검색 모드
+    if (!searchSelected) {
+      msgEl.textContent = '학생을 검색해서 선택해주세요.';
+      msgEl.className = 'status-msg err';
+      return;
+    }
+    sid  = searchSelected.studentId;
+    name = searchSelected.name;
+  } else {
+    // 학번 입력 모드
+    sid = document.getElementById('student-input').value;
+    if (sid.length !== 4) {
+      msgEl.textContent = '학번 4자리를 입력하세요.';
+      msgEl.className = 'status-msg err';
+      return;
+    }
+    name = lookupName(sid);
+    if (!name) {
+      const nameVal = document.getElementById('name-input').value.trim();
+      name = nameVal || sid;
+    }
   }
   const now     = new Date();
   const p       = getPeriod(now);
@@ -1089,16 +1236,27 @@ function saveViolation() {
     periodLabel: rec.periodLabel,
     recorder:    rec.recorder || ''
   });
-  document.getElementById('student-input').value = '';
-  document.getElementById('student-name').textContent = '—';
-  document.getElementById('student-name').style.color = 'var(--text2)';
-  document.getElementById('name-input').value = '';
-  document.getElementById('name-override-card').style.display = 'none';
+  if (inputMode === 'id') {
+    document.getElementById('student-input').value = '';
+    document.getElementById('student-name').textContent = '—';
+    document.getElementById('student-name').style.color = 'var(--text2)';
+    document.getElementById('name-input').value = '';
+    document.getElementById('name-override-card').style.display = 'none';
+    document.getElementById('student-input').focus();
+  } else {
+    searchSelected = null;
+    document.getElementById('search-grade').value = '';
+    document.getElementById('search-class').value = '';
+    document.getElementById('search-name').value = '';
+    document.getElementById('search-results').innerHTML = '';
+    document.getElementById('search-selected').textContent = '—';
+    document.getElementById('search-selected').style.color = 'var(--text2)';
+    document.getElementById('search-name').focus();
+  }
   msgEl.textContent = '✓ ' + sid + '  ' + p.label + '  ' + timeStr;
   msgEl.className = 'status-msg ok';
   setTimeout(function() { msgEl.textContent = ''; }, 3000);
   toast(sid + ' — ' + p.label, 'ok');
-  document.getElementById('student-input').focus();
   renderList(); renderStats();
 }
 
