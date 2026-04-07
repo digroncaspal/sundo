@@ -1099,40 +1099,57 @@ function parseStudentId(id) {
 }
 
 function onNameSearch() {
-  const grade    = document.getElementById('search-grade').value;
-  const cls      = document.getElementById('search-class').value;
-  const nameKw   = document.getElementById('search-name').value.trim();
+  const grade     = document.getElementById('search-grade').value;
+  const cls       = document.getElementById('search-class').value;
+  const nameInput = document.getElementById('search-name').value.trim();
   const resultsEl = document.getElementById('search-results');
+  const selectedEl = document.getElementById('search-selected');
   searchSelected = null;
-  document.getElementById('search-selected').textContent = '—';
-  document.getElementById('search-selected').style.color = 'var(--text2)';
+  selectedEl.textContent = '—';
+  selectedEl.style.color = 'var(--text2)';
+  resultsEl.innerHTML = '';
 
-  if (!grade && !cls && !nameKw) { resultsEl.innerHTML = ''; return; }
+  // 세 가지 모두 입력했을 때만 검색
+  if (!grade || !cls || !nameInput) {
+    if (grade || cls || nameInput) {
+      resultsEl.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text2);padding:8px">학년, 반, 이름을 모두 입력해주세요</div>';
+    }
+    return;
+  }
 
-  // STUDENTS에서 조건 맞는 학생 검색
+  // 정확히 일치하는 학생만 찾기
   const matches = Object.entries(STUDENTS).filter(function(entry) {
     const sid = entry[0], sname = entry[1];
     const parsed = parseStudentId(sid);
     if (!parsed) return false;
-    if (grade && String(parsed.grade) !== grade) return false;
-    if (cls   && String(parsed.cls)   !== cls)   return false;
-    if (nameKw && sname.indexOf(nameKw) === -1)   return false;
+    if (String(parsed.grade) !== grade) return false;
+    if (String(parsed.cls)   !== cls)   return false;
+    if (sname !== nameInput)             return false; // 정확히 일치
     return true;
   });
 
   if (!matches.length) {
-    resultsEl.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text2);padding:8px">검색 결과 없음</div>';
+    selectedEl.textContent = '일치하는 학생이 없습니다';
+    selectedEl.style.color = 'var(--accent)';
     return;
   }
 
-  resultsEl.innerHTML = '';
-  matches.slice(0, 10).forEach(function(entry) {
+  // 정확히 1명이면 자동 선택
+  if (matches.length === 1) {
+    const sid = matches[0][0], sname = matches[0][1];
+    const parsed = parseStudentId(sid);
+    selectSearchResult(sid, sname);
+    return;
+  }
+
+  // 동명이인인 경우 목록 표시
+  matches.forEach(function(entry) {
     const sid = entry[0], sname = entry[1];
     const parsed = parseStudentId(sid);
-    const label = parsed ? parsed.grade + '학년 ' + parsed.cls + '반 ' + sname : sname;
+    const label = parsed ? parsed.grade + '학년 ' + parsed.cls + '반 ' + parsed.num + '번 ' + sname : sname;
     const div = document.createElement('div');
     div.style.cssText = 'padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px;font-weight:700;transition:all .15s;margin-bottom:4px';
-    div.innerHTML = label + ' <span style="font-family:var(--mono);font-size:10px;color:var(--text2);font-weight:400">' + sid + '</span>';
+    div.innerHTML = label;
     (function(s, n) {
       div.addEventListener('mouseover', function() { this.style.borderColor = 'var(--accent)'; });
       div.addEventListener('mouseout',  function() { this.style.borderColor = 'var(--border)'; });
