@@ -499,7 +499,7 @@ const STAFF_DATA = {
   '3211':'나현곤', '3421':'전민혁', '3516':'연대건', '3601':'강현지',
   '2106':'김준우', '2114':'윤수지', '2416':'신기홍', '2423':'이효주',
   '2502':'김강',   '2507':'김채은', '2612':'염기현', '2618':'이수민',
-  '2627':'하두리', '2705':'김나율', '2716':'유다연', '2808':'박수민',
+  '2627':'하두리', '2705':'김나율', '2614':'유다연', '2808':'박수민',
   '1557':'관리자계정'
 };
 
@@ -508,7 +508,7 @@ const DUTY_DATA = {
   1: ['3211','3120','2612','2106'],
   2: ['2416','3517','2502','2808'],
   3: ['3601','2706','2507','2618'],
-  4: ['3516','2423','3102','2716'],
+  4: ['3516','2423','3102','2614'],
   5: ['3421','2114','2627','2705']
 };
 const VIOLATION_URL    = 'https://script.google.com/macros/s/AKfycbw02NuplhIYV3SVxI21KU25P2dqwdpSz2g2XcdXJhQ4smM9yc361oNDO83MGpYoYcGr3Q/exec';
@@ -599,28 +599,6 @@ function toast(msg, type) {
   }, 3000);
 }
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 출첵 재로그인 잠금 체크
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function checkAttendLock() {
-  const lockUntil = parseInt(localStorage.getItem('sbok_attend_lock') || '0');
-  const errEl = document.getElementById('auth-error');
-  const btnEl = document.getElementById('auth-btn');
-  if (Date.now() < lockUntil) {
-    const remain = Math.ceil((lockUntil - Date.now()) / 60000);
-    errEl.textContent = '출첵 완료 후 재로그인 잠금 중 (' + remain + '분 남음)';
-    errEl.style.color = 'var(--yellow)';
-    if (btnEl) btnEl.disabled = true;
-    // 1분마다 갱신
-    setTimeout(function() { checkAttendLock(); }, 60000);
-  } else {
-    errEl.textContent = '';
-    errEl.style.color = '';
-    if (btnEl) btnEl.disabled = false;
-    localStorage.removeItem('sbok_attend_lock');
-  }
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 로컬 스토리지
@@ -895,7 +873,7 @@ function clearLocal() {
   // 기기 출첵 기록도 삭제
   Object.keys(localStorage).filter(function(k) { return k.startsWith('sbok_attend_device_'); })
     .forEach(function(k) { localStorage.removeItem(k); });
-  ['sbok_v','sbok_a','sbok_staff','sbok_students','sbok_duty'].forEach(function(k) {
+  ['sbok_v','sbok_a','sbok_staff','sbok_students','sbok_duty','sbok_attend_lock'].forEach(function(k) {
     localStorage.removeItem(k);
   });
   violations = []; attendances = []; STUDENTS = {}; STAFF = {}; DUTY = {};
@@ -922,14 +900,6 @@ function tryAuth() {
   const errEl = document.getElementById('auth-error');
   if (id.length !== 4) { errEl.textContent = '학번 4자리를 입력하세요.'; return; }
 
-  // 출첵 후 재로그인 잠금 확인 (관리자는 제외)
-  const isAdminId = ADMIN_IDS.indexOf(String(id).trim()) !== -1;
-  const lockUntil = parseInt(localStorage.getItem('sbok_attend_lock') || '0');
-  if (!isAdminId && Date.now() < lockUntil) {
-    const remain = Math.ceil((lockUntil - Date.now()) / 60000);
-    errEl.textContent = '출첵 완료 후 ' + remain + '분간 재로그인이 잠겨있습니다.';
-    return;
-  }
   const name = STAFF[String(id).trim()];
   if (!name) { errEl.textContent = '선도부원 명단에 없는 학번입니다.'; return; }
   currentRecorder = name;
@@ -949,7 +919,6 @@ function logout() {
   document.getElementById('auth-input').value = '';
   document.getElementById('auth-name-preview').textContent = '';
   document.getElementById('auth-error').textContent = '';
-  checkAttendLock();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1407,8 +1376,6 @@ function doSaveAttend(id, lat, lng, accuracy) {
   stEl.textContent = '✓ ' + name + ' 출석 완료 (' + rec.time + ')';
   stEl.className = 'status-msg ok';
   setTimeout(function() { stEl.textContent = ''; }, 3000);
-  // 출첵 완료 후 30분간 재로그인 잠금
-  localStorage.setItem('sbok_attend_lock', String(Date.now() + 30 * 60 * 1000));
   toast(name + ' 출석 체크', 'ok');
   document.getElementById('attend-input').focus();
   renderAttend();
@@ -1651,7 +1618,6 @@ function closeDetail() { document.getElementById('detail-panel').classList.remov
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 window.addEventListener('load', function() {
   loadLocal();
-  checkAttendLock();
   loadStudents(); // 페이지 로드 시 즉시 학생 명단 불러오기
   document.getElementById('auth-input').focus();
 });
