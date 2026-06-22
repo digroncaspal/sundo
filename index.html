@@ -16,6 +16,14 @@
 html,body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;width:100%}
 body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,61,61,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,61,61,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
 
+/* 인앱 브라우저 경고 배너 */
+#inapp-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:120;background:var(--accent);color:#fff;padding:12px 16px;font-family:var(--mono);font-size:12px;line-height:1.55;align-items:flex-start;gap:10px;box-shadow:0 2px 16px rgba(0,0,0,.45)}
+#inapp-banner .iab-icon{font-size:16px;flex-shrink:0;line-height:1.4}
+#inapp-banner .iab-text{flex:1}
+#inapp-banner .iab-text b{font-weight:700}
+#inapp-banner .iab-btn{display:inline-block;margin-top:7px;background:#fff;color:var(--accent);font-weight:700;padding:6px 12px;border-radius:3px;border:none;cursor:pointer;font-family:var(--mono);font-size:11px}
+#inapp-banner .iab-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:24px;height:24px;border-radius:3px;cursor:pointer;flex-shrink:0;font-size:13px;line-height:1}
+
 /* 인증 */
 #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:28px;z-index:100;overflow:hidden}
 .auth-box{width:min(380px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:36px;position:relative;overflow:hidden}
@@ -204,6 +212,16 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 </style>
 </head>
 <body>
+
+<!-- 인앱 브라우저 경고 배너 -->
+<div id="inapp-banner">
+  <span class="iab-icon">⚠️</span>
+  <div class="iab-text">
+    <b>카카오톡 등 인앱 브라우저에서는 아침 출첵(위치 확인)이 동작하지 않습니다.</b><br>
+    <span id="iab-guide"></span>
+  </div>
+  <button class="iab-close" onclick="closeInAppBanner()">✕</button>
+</div>
 
 <!-- 인증 화면 -->
 <div id="auth-screen">
@@ -516,6 +534,71 @@ const ATTEND_URL       = 'https://script.google.com/macros/s/AKfycbzsG9XFWEnP0QX
 const FB_URL           = 'https://sjdshs-sundo-default-rtdb.firebaseio.com';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 인앱 브라우저 / 플랫폼 감지
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 카카오톡 등 인앱 브라우저(WKWebView)는 iOS에서 위치 API가
+// 멈추거나(콜백 미발생) 실패하는 경우가 많아 외부 브라우저로 유도한다.
+function getInAppBrowser() {
+  const ua = navigator.userAgent || '';
+  if (/KAKAOTALK/i.test(ua))         return 'kakao';
+  if (/Instagram/i.test(ua))         return 'instagram';
+  if (/FBAN|FBAV|FB_IAB/i.test(ua))  return 'facebook';
+  if (/Line\//i.test(ua))            return 'line';
+  if (/NAVER\(/i.test(ua))           return 'naver';
+  if (/DaumApps/i.test(ua))          return 'daum';
+  return null;
+}
+function isIOS() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) ||
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+// 가능한 경우 외부 브라우저로 강제 전환. 성공적으로 전환을 시도하면 true.
+function openInExternalBrowser() {
+  const url   = location.href;
+  const inApp = getInAppBrowser();
+  if (inApp === 'kakao' && !isIOS()) {
+    // 안드로이드 카카오톡 → 외부 브라우저로 강제 오픈
+    location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url);
+    return true;
+  }
+  if (inApp === 'line') {
+    // 라인 → 외부 브라우저 파라미터
+    location.href = url + (url.indexOf('?') === -1 ? '?' : '&') + 'openExternalBrowser=1';
+    return true;
+  }
+  return false; // iOS 인앱 등은 자동 전환 불가 → 안내만 표시
+}
+function showInAppBanner() {
+  const inApp = getInAppBrowser();
+  if (!inApp) return;
+  const guide  = document.getElementById('iab-guide');
+  const canAuto = (inApp === 'kakao' && !isIOS()) || inApp === 'line';
+  if (canAuto) {
+    guide.innerHTML = '<button class="iab-btn" onclick="openInExternalBrowser()">외부 브라우저로 열기</button>';
+  } else if (isIOS()) {
+    guide.innerHTML = '하단 <b>공유 버튼</b>(또는 우측 메뉴) → <b>"Safari로 열기"</b>를 선택해 다시 접속해주세요.';
+  } else {
+    guide.innerHTML = '우측 상단 <b>메뉴</b> → <b>"다른 브라우저로 열기"</b>를 선택해주세요.';
+  }
+  const banner = document.getElementById('inapp-banner');
+  banner.style.display = 'flex';
+  // 고정 배너만큼 레이아웃을 아래로 밀어 헤더 가림 방지
+  requestAnimationFrame(function() {
+    const h = banner.offsetHeight;
+    document.body.style.paddingTop = h + 'px';
+    const header = document.querySelector('.header');
+    if (header) header.style.top = h + 'px';
+  });
+}
+function closeInAppBanner() {
+  document.getElementById('inapp-banner').style.display = 'none';
+  document.body.style.paddingTop = '';
+  const header = document.querySelector('.header');
+  if (header) header.style.top = '';
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 상태
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 let STAFF       = {};   // { 학번: 이름 }
@@ -614,9 +697,6 @@ function loadLocal() {
 function saveV() { localStorage.setItem('sbok_v', JSON.stringify(violations)); }
 function saveA() { localStorage.setItem('sbok_a', JSON.stringify(attendances)); }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Apps Script POST
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Firebase REST API
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1284,34 +1364,62 @@ function saveAttend() {
     stEl.className = 'status-msg err';
     return;
   }
-  // GPS 위치 확인
+
+  // ── 인앱 브라우저 차단 (카카오톡 등에서는 위치 API가 멈추거나 실패함) ──
+  const inApp = getInAppBrowser();
+  if (inApp) {
+    if (openInExternalBrowser()) {
+      stEl.textContent = '외부 브라우저로 전환 중...';
+      stEl.className = 'status-msg info';
+    } else {
+      stEl.innerHTML = '인앱 브라우저에서는 위치 확인이 동작하지 않습니다.<br>하단 메뉴 → "Safari로 열기"로 다시 접속해주세요.';
+      stEl.className = 'status-msg err';
+    }
+    return;
+  }
+
+  // ── GPS 지원 확인 ──
   if (!navigator.geolocation) {
-    stEl.textContent = '이 기기는 GPS를 지원하지 않습니다.';
+    stEl.textContent = '이 기기는 위치 기능을 지원하지 않습니다.';
     stEl.className = 'status-msg err';
     return;
   }
-  stEl.textContent = '위치 확인 중... (GPS 신호 수신 중)';
+
+  stEl.textContent = '위치 확인 중...';
   stEl.className = 'status-msg info';
-  // 1차: 고정밀 GPS 시도 (15초)
+
+  let done = false;
+  // iOS 등에서 콜백이 오지 않고 멈추는 경우를 대비한 수동 타임아웃(워치독)
+  const watchdog = setTimeout(function() {
+    if (done) return;
+    done = true;
+    stEl.textContent = '위치 확인이 지연됩니다. 다시 시도하거나 실외에서 시도해주세요.';
+    stEl.className = 'status-msg err';
+  }, 12000);
+
+  // 300m 지오펜스에는 GPS 고정밀이 불필요하다.
+  // enableHighAccuracy:false → 실내에서 와이파이/셀룰러 측위로 빠르게 응답
+  // maximumAge:60000 → 최근 1분 내 위치를 재사용해 두 번째부터 즉시 처리
   navigator.geolocation.getCurrentPosition(
     function(pos) {
+      if (done) return;
+      done = true;
+      clearTimeout(watchdog);
       doSaveAttend(id, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
     },
     function(err) {
-      // 실패 시 2차: 저정밀(Wi-Fi/네트워크) 재시도
-      stEl.textContent = 'GPS 신호 약함, 네트워크 위치로 재시도 중...';
-      navigator.geolocation.getCurrentPosition(
-        function(pos) {
-          doSaveAttend(id, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-        },
-        function(err2) {
-          stEl.textContent = '위치를 가져올 수 없습니다. 위치 권한을 확인하거나 실외에서 시도해주세요.';
-          stEl.className = 'status-msg err';
-        },
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 30000 }
-      );
+      if (done) return;
+      done = true;
+      clearTimeout(watchdog);
+      let msg;
+      if (err.code === 1)      msg = '위치 권한이 거부되었습니다. 설정 > 개인정보 보호 > 위치 서비스 > 브라우저 항목을 확인해주세요.';
+      else if (err.code === 2) msg = '위치를 확인할 수 없습니다. (네트워크 또는 GPS 신호 문제)';
+      else if (err.code === 3) msg = '위치 확인 시간이 초과되었습니다. 다시 시도해주세요.';
+      else                     msg = '위치를 가져올 수 없습니다.';
+      stEl.textContent = msg;
+      stEl.className = 'status-msg err';
     },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
   );
 }
 
@@ -1619,8 +1727,9 @@ function closeDetail() { document.getElementById('detail-panel').classList.remov
 window.addEventListener('load', function() {
   loadLocal();
   loadStudents(); // 페이지 로드 시 즉시 학생 명단 불러오기
+  showInAppBanner(); // 카카오톡 등 인앱 브라우저면 경고 배너 표시
   document.getElementById('auth-input').focus();
 });
 </script>
 </body>
-</html>`
+</html>
