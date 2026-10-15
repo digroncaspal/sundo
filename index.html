@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>세종대성고등학교 선도부</title>
+<!-- Apps Script 서버와 미리 연결해 첫 요청 지연을 줄임 -->
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -209,6 +212,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .duty-chip button:hover{color:var(--accent)}
 .duty-add{width:100%;height:32px;background:var(--surface);border:1px dashed var(--border);border-radius:3px;color:var(--text2);font-size:12px;padding:0 6px;outline:none;font-family:var(--sans)}
 .edit-status{font-family:var(--mono);font-size:10px;min-height:14px;margin-top:6px}
+.up-summary{font-family:var(--mono);font-size:11px;color:var(--text);margin-bottom:8px;line-height:1.6}
+.up-summary .warn{color:var(--yellow)}
+.up-table{width:100%;border-collapse:collapse;font-size:12px;background:var(--bg);border:1px solid var(--border);border-radius:3px}
+.up-table td{padding:5px 10px;border-bottom:1px solid rgba(42,42,58,.6)}
+.up-table td:first-child{font-family:var(--mono);color:var(--text2);width:80px}
 
 /* 설정 */
 .setting-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
@@ -461,6 +469,20 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <div class="edit-status" id="duty-save-status"></div>
       </div>
 
+      <!-- 전교생 명단 업로드 -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-label">전교생 명단 업로드</div>
+        <div class="hint">CSV 또는 엑셀(.xlsx) 파일 · '학번'과 '이름'(또는 '성명') 열이 있으면 됩니다<br>학번 열이 없으면 '학년'·'반'·'번호' 열로 학번을 만듭니다 · 머리글이 없으면 A열=학번, B열=이름<br>저장하면 '선도부' 시트의 '학생 명단' 탭을 통째로 교체합니다</div>
+        <div class="hint" id="student-count-info" style="color:var(--text)"></div>
+        <input type="file" id="student-file" class="setting-input" accept=".csv,.xlsx,.xls,.txt"
+          style="height:auto;padding:9px 12px" onchange="onStudentFile(this)">
+        <div id="student-upload-preview" style="margin-top:10px"></div>
+        <div style="margin-top:10px">
+          <button class="setting-btn" id="student-upload-btn" onclick="saveStudentUpload()" disabled>시트에 저장 (명단 교체)</button>
+        </div>
+        <div class="edit-status" id="student-upload-status"></div>
+      </div>
+
       <!-- 교시 시간표 편집 -->
       <div class="card" style="margin-bottom:14px">
         <div class="card-label">교시 시간표 편집</div>
@@ -639,6 +661,8 @@ let STAFF       = {};   // { 학번: 이름 }       ← '선도부 인원' 시�
 let STAFF_LIST  = [];   // [{ name, id, admin }] ← '선도부 인원' 시트 (순서 유지)
 let ADMIN_SET   = {};   // { 학번: true }        ← 관리자 여부 O
 let STUDENTS    = {};   // { 학번: 이름 }
+let STUDENTS_SOURCE = ''; // 학생 명단을 어디서 받았는지
+let studentUpload = null; // { list:[{id,name}], fileName } 업로드 미리보기
 let inputMode   = 'id'; // 'id' or 'name'
 let searchSelected = null; // { studentId, name } 검색으로 선택된 학생
 let DUTY        = {1:[],2:[],3:[],4:[],5:[]}; // ← '요일별 선도' 시트
@@ -782,16 +806,42 @@ function cacheConfig() {
   } catch(e) {}
 }
 
-// 시트에서 최신 명단/당번 받아오기
-async function loadConfig() {
+// 시트에서 명단 + 당번 + 전교생 명단을 요청 한 번으로 받아오기
+// fresh=true 이면 서버 캐시를 건너뛰고 시트를 새로 읽음 (새로고침 버튼)
+let configLoadedAt = 0;
+async function loadConfig(fresh) {
   if (STAFF_URL.indexOf('여기에') !== -1) throw new Error('STAFF_URL이 설정되지 않았습니다.');
-  const res = await fetch(STAFF_URL + '?action=config&t=' + Date.now());
+  const res = await fetch(STAFF_URL + '?action=boot' + (fresh ? '&fresh=1' : ''));
   const d   = await res.json();
   if (!d.ok) throw new Error(d.error || '명단 불러오기 실패');
   applyConfig(d);
   configLoaded = true;
+  configLoadedAt = Date.now();
   cacheConfig();
+
+  if (d.students && Object.keys(d.students).length) {
+    STUDENTS = d.students;
+    STUDENTS_SOURCE = '선도부 시트 · 학생 명단';
+    try { localStorage.setItem('sbok_students', JSON.stringify(STUDENTS)); } catch(e) {}
+    renderStudentInfo();
+  } else {
+    loadLegacyStudents(); // '학생 명단' 탭이 비어 있으면 기존 시트에서 (로그인은 기다리지 않음)
+  }
   return d;
+}
+
+function loadLegacyStudents() {
+  fetch(VIOLATION_URL + '?action=students')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.students && Object.keys(d.students).length) {
+        STUDENTS = d.students;
+        STUDENTS_SOURCE = '기존 학생 명단 시트';
+        try { localStorage.setItem('sbok_students', JSON.stringify(STUDENTS)); } catch(e) {}
+        renderStudentInfo();
+      }
+    })
+    .catch(function(e) { console.warn('기존 학생 명단 로드 실패:', e); });
 }
 
 // 관리자 편집 내용을 시트에 저장 (text/plain 으로 보내 CORS 사전요청을 피함)
@@ -1041,18 +1091,210 @@ async function fbDelete(path) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 학생 전체 명단 자동 로드 (앱 시작 시)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 1순위: '선도부' 시트의 '학생 명단' 탭 (관리자가 업로드한 명단)
+// 2순위: 기존 학생 명단 시트 (VIOLATION_URL) — 아직 업로드한 적이 없을 때
+async function fetchStudents() {
+  try {
+    const r = await fetch(STAFF_URL + '?action=students&t=' + Date.now());
+    const d = await r.json();
+    if (d.ok && d.students && Object.keys(d.students).length) {
+      return { students: d.students, source: '선도부 시트 · 학생 명단' };
+    }
+  } catch(e) { console.warn('선도부 시트 학생 명단 로드 실패:', e); }
+  const r = await fetch(VIOLATION_URL + '?action=students');
+  const d = await r.json();
+  if (d.students && Object.keys(d.students).length) {
+    return { students: d.students, source: '기존 학생 명단 시트' };
+  }
+  return null;
+}
+
 async function loadStudents() {
   try {
-    const res  = await fetch(VIOLATION_URL + '?action=students');
-    const data = await res.json();
-    if (data.students && Object.keys(data.students).length) {
-      STUDENTS = data.students;
+    const res = await fetchStudents();
+    if (res) {
+      STUDENTS = res.students;
+      STUDENTS_SOURCE = res.source;
       localStorage.setItem('sbok_students', JSON.stringify(STUDENTS));
-      console.log('학생 명단 로드 완료:', Object.keys(STUDENTS).length + '명');
+      console.log('학생 명단 로드 완료:', Object.keys(STUDENTS).length + '명 (' + res.source + ')');
     }
   } catch(e) {
     console.warn('학생 명단 로드 실패:', e);
     // 실패 시 캐시된 명단 유지 (loadLocal에서 이미 로드됨)
+  }
+  renderStudentInfo();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 설정 탭: 전교생 명단 업로드
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const XLSX_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+function renderStudentInfo() {
+  const el = document.getElementById('student-count-info');
+  if (!el) return;
+  const n = Object.keys(STUDENTS).length;
+  el.textContent = '현재 학생 명단: ' + n + '명' + (STUDENTS_SOURCE ? ' (' + STUDENTS_SOURCE + ')' : n ? ' (저장된 캐시)' : '');
+}
+
+// 엑셀 파일을 올릴 때만 SheetJS를 불러옴
+function loadXLSXLib() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise(function(resolve, reject) {
+    const s = document.createElement('script');
+    s.src = XLSX_CDN;
+    s.onload  = function() { window.XLSX ? resolve(window.XLSX) : reject(new Error('엑셀 라이브러리 로드 실패')); };
+    s.onerror = function() { reject(new Error('엑셀 라이브러리를 불러오지 못했습니다 (인터넷 연결 확인)')); };
+    document.head.appendChild(s);
+  });
+}
+
+// 엑셀에서 저장한 CSV는 EUC-KR(CP949)인 경우가 많아서 UTF-8 실패 시 EUC-KR로 다시 읽음
+function decodeText(buf) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+  catch(e) { return new TextDecoder('euc-kr').decode(buf); }
+}
+
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const delim = (firstLine.indexOf('\t') !== -1 && firstLine.indexOf(',') === -1) ? '\t' : ',';
+  const rows = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i+1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i+1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+function normCell(v) { return String(v == null ? '' : v).trim().replace(/\.0+$/, ''); }
+
+// 표(2차원 배열)에서 학번·이름 뽑기
+function extractStudents(rows) {
+  rows = rows.map(function(r) { return (r || []).map(normCell); });
+  const key = function(s) { return s.replace(/\s/g, ''); };
+  let h = -1, idC = -1, nameC = -1, gC = -1, cC = -1, nC = -1;
+
+  // 위쪽 15줄 안에서 머리글 행 찾기
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const r  = rows[i].map(key);
+    const ni = r.findIndex(function(x) { return /^(이름|성명|학생명|학생이름)$/.test(x); });
+    if (ni === -1) continue;
+    h = i; nameC = ni;
+    idC = r.findIndex(function(x) { return x === '학번'; });
+    gC  = r.findIndex(function(x) { return x === '학년'; });
+    cC  = r.findIndex(function(x) { return x === '반'; });
+    nC  = r.findIndex(function(x) { return x === '번호' || x === '번'; });
+    break;
+  }
+  if (h === -1) { idC = 0; nameC = 1; } // 머리글이 없으면 A열=학번, B열=이름
+  if (h !== -1 && idC === -1 && (gC === -1 || cC === -1 || nC === -1)) {
+    return { error: "'학번' 열(또는 '학년'·'반'·'번호' 열)을 찾지 못했습니다." };
+  }
+
+  const list = [], seen = {}, dup = [], skipped = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r.some(function(x) { return x; })) continue; // 빈 줄
+    let id;
+    if (idC !== -1) {
+      id = r[idC] || '';
+    } else {
+      const g = r[gC] || '', c = r[cC] || '', n = r[nC] || '';
+      id = (/^\d$/.test(g) && /^\d$/.test(c) && /^\d{1,2}$/.test(n)) ? g + c + pad(n) : '';
+    }
+    const name = r[nameC] || '';
+    if (!/^\d{4}$/.test(id) || !name) { skipped.push(i + 1); continue; }
+    if (seen[id]) { dup.push(id); continue; }
+    seen[id] = true;
+    list.push({ id: id, name: name });
+  }
+  return { list: list, dup: dup, skipped: skipped };
+}
+
+async function onStudentFile(input) {
+  const file = input.files && input.files[0];
+  const st   = document.getElementById('student-upload-status');
+  const pv   = document.getElementById('student-upload-preview');
+  const btn  = document.getElementById('student-upload-btn');
+  studentUpload = null; pv.innerHTML = ''; btn.disabled = true;
+  if (!file) { setStatus(st, ''); return; }
+
+  setStatus(st, '파일 읽는 중...', 'var(--yellow)');
+  try {
+    const buf = await file.arrayBuffer();
+    let rows;
+    if (/\.(xlsx|xls)$/i.test(file.name)) {
+      const X  = await loadXLSXLib();
+      const wb = X.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]]; // 첫 번째 시트 사용
+      rows = X.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    } else {
+      rows = parseCSV(decodeText(buf));
+    }
+
+    const r = extractStudents(rows);
+    if (r.error) throw new Error(r.error);
+    if (!r.list.length) throw new Error('학번과 이름을 읽어낸 학생이 없습니다. 파일 양식을 확인하세요.');
+    studentUpload = { list: r.list, fileName: file.name };
+
+    const byGrade = {};
+    r.list.forEach(function(s) { byGrade[s.id[0]] = (byGrade[s.id[0]] || 0) + 1; });
+    const gradeText = Object.keys(byGrade).sort().map(function(g) { return g + '학년 ' + byGrade[g] + '명'; }).join(' · ');
+    let warn = '';
+    if (r.dup.length)     warn += '<div class="warn">⚠ 중복 학번 ' + r.dup.length + '건은 첫 번째 것만 사용: ' + escHtml(r.dup.slice(0, 5).join(', ')) + (r.dup.length > 5 ? ' …' : '') + '</div>';
+    if (r.skipped.length) warn += '<div class="warn">⚠ 학번·이름을 읽지 못한 ' + r.skipped.length + '줄 건너뜀 (파일 ' + r.skipped.slice(0, 5).join(', ') + (r.skipped.length > 5 ? ' …' : '') + '번째 줄)</div>';
+
+    pv.innerHTML =
+      '<div class="up-summary">총 <b>' + r.list.length + '명</b> · ' + gradeText + warn + '</div>' +
+      '<table class="up-table">' +
+        r.list.slice(0, 6).map(function(s) { return '<tr><td>' + escHtml(s.id) + '</td><td>' + escHtml(s.name) + '</td></tr>'; }).join('') +
+        (r.list.length > 6 ? '<tr><td></td><td style="color:var(--text2)">… 외 ' + (r.list.length - 6) + '명</td></tr>' : '') +
+      '</table>';
+    setStatus(st, '✓ 읽기 완료 — 확인 후 [시트에 저장]을 누르세요', 'var(--green)');
+    btn.disabled = false;
+  } catch(e) {
+    setStatus(st, '⚠ ' + e.message, 'var(--accent)');
+  }
+}
+
+async function saveStudentUpload() {
+  if (!studentUpload || configSaving) return;
+  const cur = Object.keys(STUDENTS).length;
+  if (!confirm('현재 학생 명단(' + cur + '명)을\n' + studentUpload.fileName + '의 ' + studentUpload.list.length + '명으로 교체할까요?')) return;
+
+  const st  = document.getElementById('student-upload-status');
+  const btn = document.getElementById('student-upload-btn');
+  configSaving = true; btn.disabled = true;
+  setStatus(st, '시트에 저장 중...', 'var(--yellow)');
+  try {
+    await postConfig('saveStudents', { students: studentUpload.list });
+    STUDENTS = {};
+    studentUpload.list.forEach(function(s) { STUDENTS[s.id] = s.name; });
+    STUDENTS_SOURCE = '선도부 시트 · 학생 명단';
+    localStorage.setItem('sbok_students', JSON.stringify(STUDENTS));
+    setStatus(st, '✓ 학생 명단 ' + studentUpload.list.length + '명으로 교체됨', 'var(--green)');
+    toast('학생 명단 교체 완료', 'ok');
+    studentUpload = null;
+    document.getElementById('student-file').value = '';
+    document.getElementById('student-upload-preview').innerHTML = '';
+    renderStudentInfo();
+  } catch(e) {
+    setStatus(st, '⚠ ' + e.message, 'var(--accent)');
+    toast('저장 실패: ' + e.message, 'err');
+    btn.disabled = false;
+  } finally {
+    configSaving = false;
   }
 }
 
@@ -1063,7 +1305,7 @@ async function refreshConfig() {
   const statusEl = document.getElementById('cfg-status');
   setStatus(statusEl, '선도부 시트 불러오는 중...', 'var(--yellow)');
   try {
-    await loadConfig();
+    await loadConfig(true);
     setStatus(statusEl, '✓ 선도부원 ' + STAFF_LIST.length + '명 · 당번표 불러옴', 'var(--green)');
     setTimeout(function() { statusEl.textContent = ''; }, 2500);
     toast('선도부 시트 새로고침 완료', 'ok');
@@ -1088,13 +1330,15 @@ async function loadFromSheets() {
     const [vData, aData, sData] = await Promise.all([
       fbGet('/violations'),
       fbGet('/attendances'),
-      fetch(VIOLATION_URL + '?action=students').then(function(r) { return r.json(); })
+      fetchStudents().catch(function() { return null; })
     ]);
 
-    // 학생 명단 (Apps Script)
+    // 학생 명단 (선도부 시트 우선, 없으면 기존 시트)
     if (sData && sData.students && Object.keys(sData.students).length) {
       STUDENTS = sData.students;
+      STUDENTS_SOURCE = sData.source;
       localStorage.setItem('sbok_students', JSON.stringify(STUDENTS));
+      renderStudentInfo();
     }
 
     // 단속기록 (Firebase)
@@ -1342,7 +1586,10 @@ function initApp() {
   // 로그인 시 Firebase에서 자동 불러오기
   autoLoadFromFirebase();
   // 로그인 시 선도부 시트 최신본으로 다시 맞춤 (그 사이 시트가 바뀌었을 수 있음)
-  loadConfig().then(syncSession).catch(function(e) { console.warn('선도부 시트 갱신 실패:', e); });
+  // 페이지를 연 지 오래됐을 때만 다시 확인 (방금 받았으면 중복 요청 생략)
+  if (Date.now() - configLoadedAt > 60000) {
+    loadConfig().then(syncSession).catch(function(e) { console.warn('선도부 시트 갱신 실패:', e); });
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1418,7 +1665,7 @@ function switchTab(tab) {
   if (tab === 'list')     renderList();
   if (tab === 'stats')    renderStats();
   if (tab === 'attend')   renderAttend();
-  if (tab === 'settings') { renderPeriodEditor(); renderStaffEditor(); renderDutyEditor(); }
+  if (tab === 'settings') { renderPeriodEditor(); renderStaffEditor(); renderDutyEditor(); renderStudentInfo(); }
   if (tab === 'input')    document.getElementById('student-input').focus();
 }
 
@@ -2044,14 +2291,14 @@ function closeDetail() { document.getElementById('detail-panel').classList.remov
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 시작
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-window.addEventListener('load', function() {
+// 'load' 이벤트(폰트 등 다 받은 뒤)를 기다리지 않고 스크립트 실행 즉시 시작
+(function start() {
   loadLocal();
-  loadStudents(); // 페이지 로드 시 즉시 학생 명단 불러오기
   showInAppBanner(); // 카카오톡 등 인앱 브라우저면 경고 배너 표시
   document.getElementById('auth-input').focus();
 
-  // '선도부' 시트에서 명단·당번 불러오기
-  if (STAFF_LIST.length) updateAuthConfigStatus('저장된 명단으로 대기 중 · 시트 확인 중…');
+  // 저장된 명단이 있으면 바로 로그인 가능, 최신본은 뒤에서 확인
+  if (STAFF_LIST.length) updateAuthConfigStatus('저장된 명단으로 로그인 가능 · 최신 명단 확인 중…');
   loadConfig().then(function() {
     updateAuthConfigStatus('✓ 선도부 명단 ' + STAFF_LIST.length + '명 불러옴', 'var(--green)');
     onAuthInput(document.getElementById('auth-input').value);
@@ -2064,7 +2311,7 @@ window.addEventListener('load', function() {
     }
     onAuthInput(document.getElementById('auth-input').value);
   });
-});
+})();
 </script>
 </body>
 </html>
