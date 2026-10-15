@@ -186,6 +186,30 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .pe-label-input:focus,.pe-time-input:focus{border-color:var(--accent)}
 .pe-active{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:2px;background:rgba(45,255,142,.1);border:1px solid rgba(45,255,142,.3);color:var(--green)}
 
+/* 선도부 인원 / 요일별 선도 편집 */
+.hint{font-family:var(--mono);font-size:10px;color:var(--text2);margin-bottom:12px;line-height:1.6}
+.staff-row{display:grid;grid-template-columns:1fr 84px auto 30px;gap:6px;align-items:center;margin-bottom:6px}
+.staff-head{font-family:var(--mono);font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:4px}
+.se-input{width:100%;height:36px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:0 10px;font-family:var(--sans);font-size:13px;color:var(--text);outline:none;transition:border-color .15s}
+.se-input.mono{font-family:var(--mono);letter-spacing:2px;text-align:center;padding:0 4px}
+.se-input:focus{border-color:var(--accent)}
+.se-admin{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--yellow);cursor:pointer;white-space:nowrap;user-select:none}
+.se-admin input{accent-color:var(--yellow);width:16px;height:16px;cursor:pointer}
+.se-del{width:30px;height:30px;background:transparent;border:1px solid rgba(255,61,61,.3);border-radius:3px;color:rgba(255,61,61,.7);cursor:pointer;font-size:12px}
+.se-del:hover{border-color:var(--accent);color:var(--accent)}
+.duty-editor{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.duty-col{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px}
+.duty-col.today{border-color:rgba(106,176,255,.5)}
+.duty-col-head{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px;display:flex;justify-content:space-between}
+.duty-col-head span{color:var(--text2);font-weight:400;font-size:10px}
+.duty-chip{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:5px 8px;margin-bottom:5px;font-size:12px}
+.duty-chip b{font-family:var(--mono);margin-right:4px}
+.duty-chip.missing{border-color:rgba(255,61,61,.4)}
+.duty-chip button{background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;padding:0 2px}
+.duty-chip button:hover{color:var(--accent)}
+.duty-add{width:100%;height:32px;background:var(--surface);border:1px dashed var(--border);border-radius:3px;color:var(--text2);font-size:12px;padding:0 6px;outline:none;font-family:var(--sans)}
+.edit-status{font-family:var(--mono);font-size:10px;min-height:14px;margin-top:6px}
+
 /* 설정 */
 .setting-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
 .setting-label{font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:2px;text-transform:uppercase}
@@ -193,6 +217,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .setting-input:focus{border-color:var(--blue)}
 .setting-btn{font-family:var(--mono);font-size:11px;padding:8px 16px;border-radius:2px;border:1px solid var(--blue);color:var(--blue);background:transparent;cursor:pointer;transition:all .2s;letter-spacing:1px;margin-right:8px;margin-bottom:8px}
 .setting-btn:hover{background:rgba(106,176,255,.1)}
+.setting-btn:disabled{opacity:.4;cursor:not-allowed}
 .setting-btn.danger{border-color:var(--accent);color:var(--accent)}
 .setting-btn.danger:hover{background:rgba(255,61,61,.1)}
 .code-block{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:14px;font-family:var(--mono);font-size:11px;color:#a0c4ff;line-height:1.8;overflow:auto;white-space:pre;max-height:320px;margin-top:10px}
@@ -241,8 +266,8 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <button class="auth-btn" onclick="tryAuth()">입장</button>
     <div class="auth-error" id="auth-error"></div>
   </div>
-  <div style="font-family:var(--mono);font-size:9px;color:var(--text2);opacity:.4;letter-spacing:2px;text-align:center;padding:0 20px">
-    명단이 없는 경우 → 로그인 후 설정 탭에서 명단 불러오기
+  <div id="auth-config-status" style="font-family:var(--mono);font-size:9px;color:var(--text2);opacity:.6;letter-spacing:2px;text-align:center;padding:0 20px">
+    선도부 명단 불러오는 중…
   </div>
 </div>
 
@@ -410,6 +435,32 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <!-- 설정 -->
     <div class="section" id="section-settings">
 
+      <!-- 선도부 인원 편집 -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-label">선도부 인원 편집</div>
+        <div class="hint">저장하면 '선도부 인원' 시트에 바로 반영됩니다 · 관리자 체크 = 시트의 O<br>명단에서 삭제한 인원은 요일별 선도에서도 함께 빠집니다</div>
+        <div class="staff-row staff-head"><div>이름</div><div style="text-align:center">학번</div><div>권한</div><div></div></div>
+        <div id="staff-editor"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="setting-btn" onclick="addStaffRow()">+ 인원 추가</button>
+          <button class="setting-btn" id="staff-save-btn" onclick="saveStaffEdit()">인원 저장</button>
+          <button class="setting-btn danger" onclick="resetStaffDraft()">되돌리기</button>
+        </div>
+        <div class="edit-status" id="staff-save-status"></div>
+      </div>
+
+      <!-- 요일별 선도 편집 -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-label">요일별 선도 편집</div>
+        <div class="hint">저장하면 '요일별 선도' 시트에 바로 반영됩니다 · 새 인원은 먼저 [인원 저장] 후 배정하세요</div>
+        <div class="duty-editor" id="duty-editor"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="setting-btn" id="duty-save-btn" onclick="saveDutyEdit()">당번 저장</button>
+          <button class="setting-btn danger" onclick="resetDutyDraft()">되돌리기</button>
+        </div>
+        <div class="edit-status" id="duty-save-status"></div>
+      </div>
+
       <!-- 교시 시간표 편집 -->
       <div class="card" style="margin-bottom:14px">
         <div class="card-label">교시 시간표 편집</div>
@@ -446,7 +497,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <!-- 명단 관리 -->
       <div class="card" style="margin-bottom:14px">
         <div class="card-label">명단 관리</div>
-        <button class="setting-btn" onclick="loadStaffCSV()">선도부원 명단 새로고침</button>
+        <button class="setting-btn" onclick="refreshConfig()">🔄 선도부 시트 새로고침</button>
         <button class="setting-btn" onclick="loadFromSheets()">📥 시트에서 기록 불러오기</button>
         <button class="setting-btn danger" onclick="clearLocal()">로컬 데이터 초기화</button>
         <div style="font-family:var(--mono);font-size:10px;margin-top:10px" id="cfg-status"></div>
@@ -505,30 +556,13 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 상수
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const ADMIN_IDS = ['1557'];
 // 세종대성고등학교 위치 (위도, 경도) 및 허용 반경
 const SCHOOL_LAT    = 36.4971332747623;
 const SCHOOL_LNG    = 127.254676040658;
 const SCHOOL_RADIUS = 300; // 미터 (학교 반경 300m)
 
-// ── 선도부원 명단 (하드코딩) ──
-const STAFF_DATA = {
-  '3517':'우다윤', '2706':'김나현', '3102':'김경민', '1227':'하민하',
-  '3211':'나현곤', '1619':'이서윤', '3516':'연대건', '1504':'김나경',
-  '2106':'김준우', '2114':'윤수지', '2416':'신기홍', '1226':'조혜정',
-  '2502':'김강',   '2507':'김채은', '1822':'정경은', '2618':'이수민',
-  '1821':'여하늘', '2705':'김나율', '1215':'신윤아', '2808':'박수민',
-  '1557':'관리자계정'
-};
-
-// ── 요일별 당번 (1=월 ~ 5=금) ──
-const DUTY_DATA = {
-  1: ['3211','2106','1227','1504'],
-  2: ['2416','3517','2502','2808'],
-  3: ['2706','2507','2618','1226'],
-  4: ['3516','1822','3102','1215'],
-  5: ['1821','2114','1619','2705']
-};
+// ── '선도부' 스프레드시트 Apps Script 웹 앱 URL (Code.gs 배포 후 붙여넣기) ──
+const STAFF_URL        = 'https://script.google.com/macros/s/AKfycbz3D-m22v-IbH1lpV3yEnF_PPChxsL-Vp3MTm7ivTY_I0VsRb98TCZ_hvUPnFOROIK6vA/exec';
 const VIOLATION_URL    = 'https://script.google.com/macros/s/AKfycbw02NuplhIYV3SVxI21KU25P2dqwdpSz2g2XcdXJhQ4smM9yc361oNDO83MGpYoYcGr3Q/exec';
 const ATTEND_URL       = 'https://script.google.com/macros/s/AKfycbzsG9XFWEnP0QXzwYnXmspFjYMVMbcD3_531noHWVYBrDLq1E5x1rpvlEkI3Hw_MrmTtw/exec';
 const FB_URL           = 'https://sjdshs-sundo-default-rtdb.firebaseio.com';
@@ -601,14 +635,21 @@ function closeInAppBanner() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 상태
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-let STAFF       = {};   // { 학번: 이름 }
+let STAFF       = {};   // { 학번: 이름 }       ← '선도부 인원' 시트
+let STAFF_LIST  = [];   // [{ name, id, admin }] ← '선도부 인원' 시트 (순서 유지)
+let ADMIN_SET   = {};   // { 학번: true }        ← 관리자 여부 O
 let STUDENTS    = {};   // { 학번: 이름 }
 let inputMode   = 'id'; // 'id' or 'name'
 let searchSelected = null; // { studentId, name } 검색으로 선택된 학생
-let DUTY        = {};   // { 1(월):[학번..], 2(화):[..], ..., 5(금):[..] }
+let DUTY        = {1:[],2:[],3:[],4:[],5:[]}; // ← '요일별 선도' 시트
+let staffDraft  = [];   // 설정 탭 편집용 사본
+let dutyDraft   = {};   // 설정 탭 편집용 사본
+let configLoaded = false; // 시트에서 최신 명단을 받아왔는지
+let configSaving = false;
 let violations  = [];
 let attendances = [];
 let currentRecorder = null;
+let currentId   = null; // 로그인한 학번
 let isAdmin = false;
 let filterMode  = 'today';
 let delTargetId = null;
@@ -661,6 +702,17 @@ function getTodayDow() {
   return (d >= 1 && d <= 5) ? d : 0;
 }
 const DOW_LABEL = { 1:'월요일', 2:'화요일', 3:'수요일', 4:'목요일', 5:'금요일' };
+const DOW_SHORT = { 1:'월', 2:'화', 3:'수', 4:'목', 5:'금' };
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+function setStatus(el, text, color) {
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color || 'var(--text2)';
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Apps Script 코드 표시용
@@ -690,12 +742,267 @@ function loadLocal() {
   try { violations  = JSON.parse(localStorage.getItem('sbok_v') || '[]'); } catch(e) { violations = []; }
   try { attendances = JSON.parse(localStorage.getItem('sbok_a') || '[]'); } catch(e) { attendances = []; }
   try { STUDENTS    = JSON.parse(localStorage.getItem('sbok_students') || '{}'); } catch(e) { STUDENTS = {}; }
-  // 명단/당번은 항상 하드코딩 데이터 사용
-  STAFF = Object.assign({}, STAFF_DATA);
-  DUTY  = Object.assign({}, DUTY_DATA);
+  // 명단/당번: 마지막으로 시트에서 받아온 캐시를 먼저 적용 (시트 응답 전·오프라인 대비)
+  try {
+    const cached = JSON.parse(localStorage.getItem('sbok_config') || 'null');
+    if (cached) applyConfig(cached);
+  } catch(e) {}
 }
 function saveV() { localStorage.setItem('sbok_v', JSON.stringify(violations)); }
 function saveA() { localStorage.setItem('sbok_a', JSON.stringify(attendances)); }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// '선도부' 스프레드시트 연동 (선도부 인원 · 요일별 선도)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function applyConfig(d) {
+  STAFF_LIST = (d.staff || []).map(function(s) {
+    return { name: String(s.name), id: String(s.id), admin: !!s.admin };
+  });
+  STAFF = {}; ADMIN_SET = {};
+  STAFF_LIST.forEach(function(s) {
+    STAFF[s.id] = s.name;
+    if (s.admin) ADMIN_SET[s.id] = true;
+  });
+  DUTY = {};
+  for (let k = 1; k <= 5; k++) {
+    DUTY[k] = (((d.duty || {})[k]) || []).map(String);
+  }
+  resetDrafts();
+}
+
+function resetDrafts() {
+  staffDraft = STAFF_LIST.map(function(s) { return Object.assign({}, s); });
+  dutyDraft = {};
+  for (let k = 1; k <= 5; k++) dutyDraft[k] = (DUTY[k] || []).slice();
+}
+
+function cacheConfig() {
+  try {
+    localStorage.setItem('sbok_config', JSON.stringify({ staff: STAFF_LIST, duty: DUTY }));
+  } catch(e) {}
+}
+
+// 시트에서 최신 명단/당번 받아오기
+async function loadConfig() {
+  if (STAFF_URL.indexOf('여기에') !== -1) throw new Error('STAFF_URL이 설정되지 않았습니다.');
+  const res = await fetch(STAFF_URL + '?action=config&t=' + Date.now());
+  const d   = await res.json();
+  if (!d.ok) throw new Error(d.error || '명단 불러오기 실패');
+  applyConfig(d);
+  configLoaded = true;
+  cacheConfig();
+  return d;
+}
+
+// 관리자 편집 내용을 시트에 저장 (text/plain 으로 보내 CORS 사전요청을 피함)
+async function postConfig(action, payload) {
+  const body = Object.assign({ action: action, adminId: currentId }, payload);
+  const res = await fetch(STAFF_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  });
+  const d = await res.json();
+  if (!d.ok) throw new Error(d.error || '저장 실패');
+  applyConfig(d);   // 서버가 돌려준 최신 시트 내용으로 갱신
+  configLoaded = true;
+  cacheConfig();
+  return d;
+}
+
+// 명단 변경 후 로그인 세션(권한 등)을 시트 기준으로 맞춤
+function syncSession() {
+  if (!currentId) return;
+  if (!STAFF[currentId]) {
+    toast('선도부 명단에서 제외된 계정이라 로그아웃됩니다.', 'err');
+    logout();
+    return;
+  }
+  currentRecorder = STAFF[currentId];
+  isAdmin = !!ADMIN_SET[currentId];
+  applyRoleUI();
+  renderAttend();
+  if (isAdmin) { renderStaffEditor(); renderDutyEditor(); }
+}
+
+function applyRoleUI() {
+  document.querySelectorAll('.admin-only').forEach(function(el) {
+    el.style.display = isAdmin ? 'flex' : 'none';
+  });
+  document.getElementById('admin-badge').style.display = isAdmin ? 'inline-flex' : 'none';
+  document.getElementById('recorder-name').textContent = currentRecorder;
+  // 관리자 권한이 사라졌는데 관리자 탭을 보고 있으면 입력 탭으로
+  const active = document.querySelector('.section.active');
+  if (!isAdmin && active && ['section-list','section-stats','section-settings'].indexOf(active.id) !== -1) {
+    switchTab('input');
+  }
+}
+
+function updateAuthConfigStatus(text, color) {
+  const el = document.getElementById('auth-config-status');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color || 'var(--text2)';
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 설정 탭: 선도부 인원 편집
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderStaffEditor() {
+  const el = document.getElementById('staff-editor');
+  if (!el) return;
+  if (!staffDraft.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px">인원이 없습니다</div>';
+    return;
+  }
+  el.innerHTML = staffDraft.map(function(s, i) {
+    return '<div class="staff-row">' +
+      '<input class="se-input" value="' + escHtml(s.name) + '" placeholder="이름" maxlength="20" oninput="staffDraft[' + i + '].name=this.value">' +
+      '<input class="se-input mono" value="' + escHtml(s.id) + '" placeholder="학번" maxlength="4" inputmode="numeric" ' +
+        'oninput="this.value=this.value.replace(/\\D/g,\'\');staffDraft[' + i + '].id=this.value">' +
+      '<label class="se-admin"><input type="checkbox" ' + (s.admin ? 'checked' : '') +
+        ' onchange="staffDraft[' + i + '].admin=this.checked">관리자</label>' +
+      '<button class="se-del" title="삭제" onclick="removeStaffRow(' + i + ')">✕</button>' +
+    '</div>';
+  }).join('');
+}
+
+function addStaffRow() {
+  staffDraft.push({ name: '', id: '', admin: false });
+  renderStaffEditor();
+  const inputs = document.querySelectorAll('#staff-editor .staff-row:last-child .se-input');
+  if (inputs[0]) inputs[0].focus();
+}
+
+function removeStaffRow(i) {
+  staffDraft.splice(i, 1);
+  renderStaffEditor();
+}
+
+function resetStaffDraft() {
+  staffDraft = STAFF_LIST.map(function(s) { return Object.assign({}, s); });
+  renderStaffEditor();
+  setStatus(document.getElementById('staff-save-status'), '');
+}
+
+async function saveStaffEdit() {
+  if (configSaving) return;
+  const st = document.getElementById('staff-save-status');
+  const list = staffDraft
+    .map(function(s) { return { name: (s.name || '').trim(), id: (s.id || '').trim(), admin: !!s.admin }; })
+    .filter(function(s) { return s.name || s.id; }); // 완전히 빈 줄은 무시
+
+  // 클라이언트 측 검사 (서버에서도 다시 검사함)
+  const seen = {};
+  for (let k = 0; k < list.length; k++) {
+    const s = list[k];
+    if (!/^\d{4}$/.test(s.id)) { setStatus(st, '⚠ 학번은 4자리 숫자여야 합니다: ' + (s.name || '(이름 없음)'), 'var(--accent)'); return; }
+    if (!s.name)               { setStatus(st, '⚠ ' + s.id + '의 이름이 비어 있습니다.', 'var(--accent)'); return; }
+    if (seen[s.id])            { setStatus(st, '⚠ 중복된 학번: ' + s.id, 'var(--accent)'); return; }
+    seen[s.id] = true;
+  }
+  if (!list.some(function(s) { return s.admin; })) {
+    setStatus(st, '⚠ 관리자는 최소 1명 있어야 합니다.', 'var(--accent)'); return;
+  }
+  const meAfter = list.find(function(s) { return s.id === currentId; });
+  if (!meAfter || !meAfter.admin) {
+    if (!confirm('본인 계정의 관리자 권한이 없어집니다. 계속할까요?')) return;
+  }
+
+  configSaving = true;
+  document.getElementById('staff-save-btn').disabled = true;
+  setStatus(st, '시트에 저장 중...', 'var(--yellow)');
+  try {
+    await postConfig('saveStaff', { staff: list });
+    setStatus(st, '✓ 선도부 인원 시트에 저장됨 (' + STAFF_LIST.length + '명)', 'var(--green)');
+    toast('선도부 인원 저장됨', 'ok');
+    syncSession();
+  } catch(e) {
+    setStatus(st, '⚠ ' + e.message, 'var(--accent)');
+    toast('저장 실패: ' + e.message, 'err');
+  } finally {
+    configSaving = false;
+    document.getElementById('staff-save-btn').disabled = false;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 설정 탭: 요일별 선도 편집
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderDutyEditor() {
+  const el = document.getElementById('duty-editor');
+  if (!el) return;
+  const todayDow = getTodayDow();
+  let html = '';
+  for (let d = 1; d <= 5; d++) {
+    const ids = dutyDraft[d] || [];
+    const chips = ids.map(function(id, i) {
+      const name = STAFF[id];
+      return '<div class="duty-chip' + (name ? '' : ' missing') + '">' +
+        '<div><b>' + escHtml(id) + '</b>' + escHtml(name || '(명단 없음)') + '</div>' +
+        '<button title="빼기" onclick="removeDuty(' + d + ',' + i + ')">✕</button>' +
+      '</div>';
+    }).join('');
+    const options = STAFF_LIST
+      .filter(function(s) { return ids.indexOf(s.id) === -1; })
+      .map(function(s) { return '<option value="' + escHtml(s.id) + '">' + escHtml(s.id + ' ' + s.name) + '</option>'; })
+      .join('');
+    html += '<div class="duty-col' + (d === todayDow ? ' today' : '') + '">' +
+      '<div class="duty-col-head">' + DOW_SHORT[d] + '<span>' + ids.length + '명' + (d === todayDow ? ' · 오늘' : '') + '</span></div>' +
+      chips +
+      '<select class="duty-add" onchange="addDuty(' + d + ',this.value)">' +
+        '<option value="">+ 인원 추가</option>' + options +
+      '</select>' +
+    '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function addDuty(d, id) {
+  if (!id) return;
+  if (dutyDraft[d].indexOf(id) === -1) dutyDraft[d].push(id);
+  renderDutyEditor();
+}
+
+function removeDuty(d, i) {
+  dutyDraft[d].splice(i, 1);
+  renderDutyEditor();
+}
+
+function resetDutyDraft() {
+  dutyDraft = {};
+  for (let k = 1; k <= 5; k++) dutyDraft[k] = (DUTY[k] || []).slice();
+  renderDutyEditor();
+  setStatus(document.getElementById('duty-save-status'), '');
+}
+
+async function saveDutyEdit() {
+  if (configSaving) return;
+  const st = document.getElementById('duty-save-status');
+  // 명단에 없는 학번은 저장 전에 걸러냄
+  for (let d = 1; d <= 5; d++) {
+    const bad = dutyDraft[d].filter(function(id) { return !STAFF[id]; });
+    if (bad.length) {
+      setStatus(st, '⚠ ' + DOW_SHORT[d] + '요일에 명단에 없는 학번이 있습니다: ' + bad.join(', '), 'var(--accent)');
+      return;
+    }
+  }
+  configSaving = true;
+  document.getElementById('duty-save-btn').disabled = true;
+  setStatus(st, '시트에 저장 중...', 'var(--yellow)');
+  try {
+    await postConfig('saveDuty', { duty: dutyDraft });
+    setStatus(st, '✓ 요일별 선도 시트에 저장됨', 'var(--green)');
+    toast('요일별 선도 저장됨', 'ok');
+    syncSession();
+  } catch(e) {
+    setStatus(st, '⚠ ' + e.message, 'var(--accent)');
+    toast('저장 실패: ' + e.message, 'err');
+  } finally {
+    configSaving = false;
+    document.getElementById('duty-save-btn').disabled = false;
+  }
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Firebase REST API
@@ -750,17 +1057,21 @@ async function loadStudents() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 명단 새로고침 (하드코딩 재적용)
+// 선도부 시트 새로고침 (설정 탭 버튼)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function loadStaffCSV() {
-  STAFF = Object.assign({}, STAFF_DATA);
-  DUTY  = Object.assign({}, DUTY_DATA);
+async function refreshConfig() {
   const statusEl = document.getElementById('cfg-status');
-  statusEl.textContent = '✓ 선도부원 ' + Object.keys(STAFF).length + '명 적용됨';
-  statusEl.style.color = 'var(--green)';
-  setTimeout(function() { statusEl.textContent = ''; }, 2500);
-  toast('선도부원 명단 적용됨', 'ok');
-  renderAttend();
+  setStatus(statusEl, '선도부 시트 불러오는 중...', 'var(--yellow)');
+  try {
+    await loadConfig();
+    setStatus(statusEl, '✓ 선도부원 ' + STAFF_LIST.length + '명 · 당번표 불러옴', 'var(--green)');
+    setTimeout(function() { statusEl.textContent = ''; }, 2500);
+    toast('선도부 시트 새로고침 완료', 'ok');
+    syncSession();
+  } catch(e) {
+    setStatus(statusEl, '⚠ ' + e.message, 'var(--accent)');
+    toast('새로고침 실패', 'err');
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -949,16 +1260,17 @@ function exportCSV(type) {
 // 설정
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function clearLocal() {
-  if (!confirm('로컬 데이터를 모두 초기화할까요?')) return;
+  if (!confirm('로컬 데이터를 모두 초기화할까요?\n(선도부 명단·당번은 시트에서 다시 불러옵니다)')) return;
   // 기기 출첵 기록도 삭제
   Object.keys(localStorage).filter(function(k) { return k.startsWith('sbok_attend_device_'); })
     .forEach(function(k) { localStorage.removeItem(k); });
   ['sbok_v','sbok_a','sbok_staff','sbok_students','sbok_duty','sbok_attend_lock'].forEach(function(k) {
     localStorage.removeItem(k);
   });
-  violations = []; attendances = []; STUDENTS = {}; STAFF = {}; DUTY = {};
+  violations = []; attendances = []; STUDENTS = {};
   renderList(); renderStats(); renderAttend();
   toast('초기화 완료', 'info');
+  refreshConfig();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -970,6 +1282,11 @@ function onAuthInput(val) {
   const previewEl = document.getElementById('auth-name-preview');
   if (v.length !== 4) { previewEl.textContent = ''; return; }
 
+  if (!STAFF_LIST.length) {
+    previewEl.textContent = '명단 불러오는 중…';
+    previewEl.style.color = 'var(--yellow)';
+    return;
+  }
   const name = STAFF[v];
   previewEl.textContent = name ? '✓ 확인됨' : '선도부원 명단에 없는 학번';
   previewEl.style.color = name ? 'var(--green)' : 'var(--accent)';
@@ -979,11 +1296,13 @@ function tryAuth() {
   const id    = document.getElementById('auth-input').value.trim();
   const errEl = document.getElementById('auth-error');
   if (id.length !== 4) { errEl.textContent = '학번 4자리를 입력하세요.'; return; }
+  if (!STAFF_LIST.length) { errEl.textContent = '선도부 명단을 아직 불러오지 못했습니다. 잠시 후 다시 시도하세요.'; return; }
 
   const name = STAFF[String(id).trim()];
   if (!name) { errEl.textContent = '선도부원 명단에 없는 학번입니다.'; return; }
+  currentId       = String(id).trim();
   currentRecorder = name;
-  isAdmin = ADMIN_IDS.indexOf(String(id).trim()) !== -1;
+  isAdmin = !!ADMIN_SET[currentId];
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('recorder-name').textContent = id;  // 이름 대신 학번 표시
@@ -992,6 +1311,7 @@ function tryAuth() {
 
 function logout() {
   currentRecorder = null;
+  currentId = null;
   isAdmin = false;
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
@@ -1011,18 +1331,18 @@ function initApp() {
   document.getElementById('header-date').textContent =
     now.getFullYear() + '.' + pad(now.getMonth()+1) + '.' + pad(now.getDate());
   // 관리자 탭 표시 여부
-  document.querySelectorAll('.admin-only').forEach(function(el) {
-    el.style.display = isAdmin ? 'flex' : 'none';
-  });
-  document.getElementById('admin-badge').style.display = isAdmin ? 'inline-flex' : 'none';
-  document.getElementById('recorder-name').textContent = currentRecorder;
+  applyRoleUI();
   const todayStr = getToday();
   document.getElementById('csv-from').value = todayStr;
   document.getElementById('csv-to').value   = todayStr;
   renderPeriodEditor();
+  resetDrafts();
+  renderStaffEditor(); renderDutyEditor();
   renderList(); renderStats(); renderAttend();
   // 로그인 시 Firebase에서 자동 불러오기
   autoLoadFromFirebase();
+  // 로그인 시 선도부 시트 최신본으로 다시 맞춤 (그 사이 시트가 바뀌었을 수 있음)
+  loadConfig().then(syncSession).catch(function(e) { console.warn('선도부 시트 갱신 실패:', e); });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1098,7 +1418,7 @@ function switchTab(tab) {
   if (tab === 'list')     renderList();
   if (tab === 'stats')    renderStats();
   if (tab === 'attend')   renderAttend();
-  if (tab === 'settings') renderPeriodEditor();
+  if (tab === 'settings') { renderPeriodEditor(); renderStaffEditor(); renderDutyEditor(); }
   if (tab === 'input')    document.getElementById('student-input').focus();
 }
 
@@ -1447,9 +1767,8 @@ function doSaveAttend(id, lat, lng, accuracy) {
     stEl.className = 'status-msg err';
     return;
   }
-  // 본인만 출첵 가능
-  const myId = Object.keys(STAFF).find(function(k) { return STAFF[k] === currentRecorder; });
-  if (id !== myId) {
+  // 본인만 출첵 가능 (로그인한 학번과 비교)
+  if (id !== currentId) {
     stEl.textContent = '본인 학번만 출석 체크할 수 있습니다.';
     stEl.className = 'status-msg err';
     return;
@@ -1504,7 +1823,8 @@ function renderAttend() {
   const dutyEl = document.getElementById('duty-list');
   if (dutyEl) {
     if (!dutyIds.length) {
-      dutyEl.innerHTML = '<span style="font-family:var(--mono);font-size:11px;color:var(--text2)">당번 정보 없음 — 설정에서 명단을 불러오세요</span>';
+      dutyEl.innerHTML = '<span style="font-family:var(--mono);font-size:11px;color:var(--text2)">' +
+        (dow ? "당번 정보 없음 — '요일별 선도' 시트를 확인하세요" : '오늘은 당번이 없습니다') + '</span>';
     } else {
       const todayChecked = attendances.filter(function(a) { return a.date === today; }).map(function(a) { return a.studentId; });
       dutyEl.innerHTML = dutyIds.map(function(id) {
@@ -1729,6 +2049,21 @@ window.addEventListener('load', function() {
   loadStudents(); // 페이지 로드 시 즉시 학생 명단 불러오기
   showInAppBanner(); // 카카오톡 등 인앱 브라우저면 경고 배너 표시
   document.getElementById('auth-input').focus();
+
+  // '선도부' 시트에서 명단·당번 불러오기
+  if (STAFF_LIST.length) updateAuthConfigStatus('저장된 명단으로 대기 중 · 시트 확인 중…');
+  loadConfig().then(function() {
+    updateAuthConfigStatus('✓ 선도부 명단 ' + STAFF_LIST.length + '명 불러옴', 'var(--green)');
+    onAuthInput(document.getElementById('auth-input').value);
+  }).catch(function(e) {
+    console.warn('선도부 시트 불러오기 실패:', e);
+    if (STAFF_LIST.length) {
+      updateAuthConfigStatus('⚠ 시트 연결 실패 — 마지막으로 저장된 명단 사용 중', 'var(--yellow)');
+    } else {
+      updateAuthConfigStatus('⚠ 선도부 명단을 불러오지 못했습니다 (' + e.message + ')', 'var(--accent)');
+    }
+    onAuthInput(document.getElementById('auth-input').value);
+  });
 });
 </script>
 </body>
